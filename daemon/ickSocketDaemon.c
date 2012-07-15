@@ -1,0 +1,222 @@
+/*
+ * Copyright (C) 2012 Erland Isaksson (erland@isaksson.info)
+ * All rights reserved.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <pthread.h>
+
+#include "ickDiscovery.h"
+
+int g_clientSocket = 0;
+int g_serverSocket = 0;
+static pthread_mutex_t g_receiveMutex = PTHREAD_MUTEX_INITIALIZER;
+
+void onMessage(const char * szDeviceId, const void * message, size_t messageLength, enum ickMessage_communicationstate state)
+{
+	pthread_mutex_lock(&g_receiveMutex);
+	printf("Message from %s: %s\n", szDeviceId,(const char *)message);
+	if(g_clientSocket != 0) {
+		size_t messageBufferSize = strlen(szDeviceId)+messageLength+1;
+		size_t deviceIdLength = strlen(szDeviceId);
+		char* messageBuffer = malloc(messageBufferSize);
+		memcpy(messageBuffer,szDeviceId,deviceIdLength);
+		messageBuffer[deviceIdLength] = '\n';
+		memcpy(messageBuffer+deviceIdLength+1,message,messageLength);
+		if(send(g_clientSocket,messageBuffer,messageBufferSize,0) != messageBufferSize) {
+			fprintf(stderr, "Failed to write message from %s to socket: %s\n",szDeviceId,(const char*)message);
+		}
+		free(messageBuffer);
+	}
+	pthread_mutex_unlock(&g_receiveMutex);
+}
+
+void onDevice(const char * szDeviceId, enum ickDiscovery_command change, enum ickDevice_servicetype type)
+{
+	switch(change) {
+		case ICKDISCOVERY_ADD_DEVICE:
+			printf("New device %s of type %d\n",szDeviceId,type);
+			break;
+		case ICKDISCOVERY_REMOVE_DEVICE:
+			printf("Removed device %s\n",szDeviceId);
+			break;
+		case ICKDISCOVERY_UPDATE_DEVICE:
+			printf("Updated device %s of type %d\n",szDeviceId,type);
+			break;
+		default:
+			printf("Unknown message in device callback\n");
+			break;
+	}
+}
+char* skipDelimiters(char* message) 
+{
+	while(*message == '\n' || *message == '\r' || *message == ' ' || *message == '\0') {
+		message=message+1;
+	}
+	return message;
+}
+
+void handleShutdown() {
+	if(g_serverSocket>0) {
+		shutdown(g_serverSocket,2);
+	}
+}
+void handleMessage(char* message) {
+	message = skipDelimiters(message);
+
+	char deviceId[100];
+	int i=0;
+	while(*message != '\0' && *message != '\n' && *message != '\r' && *message != ' ') {
+		deviceId[i] = *message;
+		message++;
+		i++;
+	}
+	deviceId[i] = '\0';
+
+	if(strcmp(deviceId,"ALL")==0) {
+		printf("Sending notification %s\n",message);
+		ickDeviceSendMsg(NULL,message,strlen(message));
+	}else {
+		printf("Sending message to %s: %s\n",deviceId, message);
+		ickDeviceSendMsg(deviceId,message,strlen(message));
+	}
+}
+
+void handleInitialization(int socketfd, char* message) {
+	
+	message = skipDelimiters(message);
+
+	char deviceId[100];
+	int i=0;
+	while(*message != '\0' && *message != '\n' && *message != '\r' && *message != ' ') {
+		deviceId[i] = *message;
+		message++;
+		i++;
+	}
+	deviceId[i] = '\0';
+	
+	message = skipDelimiters(message);
+
+	char networkAddress[100];
+	i=0;
+	while(*message != '\0' && *message != '\n' && *message != '\r' && *message != ' ') {
+		networkAddress[i] = *message;
+		message++;
+		i++;
+	}
+	networkAddress[i] = '\0';
+
+	message = skipDelimiters(message);
+
+	char deviceName[255];
+	i=0;
+	while(*message != '\0' && *message != '\n' && *message != '\r') {
+		deviceName[i] = *message;
+		message++;
+		i++;
+	}
+	deviceName[i] = '\0';
+
+	printf("Initializing ickP2P %s...\n");
+    ickDeviceRegisterMessageCallback(&onMessage);
+    ickDeviceRegisterDeviceCallback(&onDevice);
+    ickInitDiscovery(deviceId, networkAddress,NULL);
+    ickDiscoverySetupConfigurationData(deviceName, NULL);
+    ickDiscoveryAddService(ICKDEVICE_PLAYER);
+    g_clientSocket = socketfd;
+}
+
+static void* client_thread(void *arg) {
+    int *socketfd = (int *)arg;
+
+	char buffer[8193];
+
+	int nRead = 0;
+	int offset = 0;
+	while((nRead = read(*socketfd, buffer, 8192)) > 0) {
+		offset = 0;
+		buffer[nRead] = '\0';
+		char *finalBuffer = malloc(nRead+1);
+		memcpy(finalBuffer,buffer,nRead+1);
+		while(nRead>0 && buffer[nRead-1] != '\0') {
+			offset = offset + nRead;
+			if((nRead = read(*socketfd, buffer, 8192))>0) {
+				buffer[nRead] = '\0';
+				char *newFinalBuffer = malloc(offset+nRead+1);
+				memcpy(newFinalBuffer,finalBuffer,offset);
+				memcpy(newFinalBuffer+offset,buffer,nRead+1);
+				char *oldBuffer = finalBuffer;
+				finalBuffer = newFinalBuffer;
+				free(oldBuffer);
+			}
+		}
+		printf("Processing ickSocketDaemon message\n");
+		if(strncmp("MESSAGE",finalBuffer,7)==0) {
+			handleMessage(finalBuffer+7);
+		}else if(strncmp("INIT",finalBuffer,4)==0) {
+			handleInitialization(*socketfd, finalBuffer+4);
+		}else if(strncmp("SHUTDOWN",finalBuffer,8)==0) {
+			handleShutdown();
+			free(finalBuffer);
+			break;
+		}else {
+			fprintf(stderr, "Unknown command %s",buffer);
+		}
+		free(finalBuffer);
+	}
+	close(*socketfd);
+	free(socketfd);
+	return 0;
+}
+
+int main( int argc, const char* argv[] )
+{
+	struct hostent     *he;
+	// resolve localhost to an IP (should be 127.0.0.1)
+	if ((he = gethostbyname("localhost")) == NULL) {
+		fprintf(stderr, "Error resolving hostname..");
+		return 1;
+	}
+
+	struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(20530);
+	memcpy(&addr.sin_addr, he->h_addr_list[0], he->h_length);
+	socklen_t addr_len = sizeof(addr);
+	
+	g_serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+	int opt = 1;
+	setsockopt(g_serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(int));
+    setsockopt(g_serverSocket, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(int));
+
+    if (bind(g_serverSocket, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+        fprintf(stderr, "Unable to bind to server socket");
+        return 1;
+    }
+
+	listen(g_serverSocket,1);
+	int socket;
+    while((socket = accept(g_serverSocket,
+                     (struct sockaddr *) &addr,
+                     &addr_len))>=0) {
+
+        int *client_socket = malloc(sizeof(int));
+        *client_socket = socket;
+        pthread_t handle;
+        pthread_create(&handle, NULL, client_thread, client_socket);
+    }
+    close(g_serverSocket);
+
+	if(g_clientSocket != 0) {
+		close(g_clientSocket);
+	}
+	printf("Shutting down ickP2P...\n");
+	ickEndDiscovery(1);
+	return 0;
+}	
