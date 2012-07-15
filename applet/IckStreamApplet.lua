@@ -55,7 +55,8 @@ oo.class(_M, Applet)
 function init(self)
 	self.playlistTracksByUrl = {}
 	self.playlistTracksById = {}
-	os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon &");
+	os.execute("chmod +x ".._getAppletDir().."IckStream/ickSocketDaemon")
+	os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon &")
 	Timer(5000,
 		function() 
 			self:_initializeSocket() 
