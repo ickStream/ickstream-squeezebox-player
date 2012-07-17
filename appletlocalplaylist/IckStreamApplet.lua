@@ -393,7 +393,9 @@ function _playCurrentTrack(self, sink)
 				if string.sub(currentTrack.streamingRefs[1].url,1,10) == "service://" then
 					local startPos,endPos,text = string.find(currentTrack.streamingRefs[1].url,'service://([^/]*)')
 					if text and self.localServices[text] then
-						streamingUrl = string.gsub(currentTrack.streamingRefs[1].url,"service://"..text,self.localServices[text])
+						log:warn("Replacing: "..currentTrack.streamingRefs[1].url.."\nWith: "..self.localServices[text])
+						streamingUrl = string.gsub(currentTrack.streamingRefs[1].url,"service://[^/]*",self.localServices[text])
+						log:warn("Resulting in: "..streamingUrl)
 					end
 				else
 					streamingUrl = currentTrack.streamingRefs[1].url
