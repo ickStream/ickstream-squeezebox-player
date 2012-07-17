@@ -20,17 +20,21 @@ static pthread_mutex_t g_receiveMutex = PTHREAD_MUTEX_INITIALIZER;
 
 void onMessage(const char * szDeviceId, const void * message, size_t messageLength, enum ickMessage_communicationstate state)
 {
+	char MESSAGE[] = "MESSAGE\n";
+	
 	pthread_mutex_lock(&g_receiveMutex);
 	printf("Message from %s: %s\n", szDeviceId,(const char *)message);
 	if(g_clientSocket != 0) {
-		size_t messageBufferSize = strlen(szDeviceId)+messageLength+1;
+		size_t messageBufferSize = strlen(szDeviceId)+messageLength+strlen(MESSAGE)+1;
 		size_t deviceIdLength = strlen(szDeviceId);
-		char* messageBuffer = malloc(messageBufferSize);
+		char* messageBuffer = malloc(messageBufferSize+1);
 		memcpy(messageBuffer,szDeviceId,deviceIdLength);
 		messageBuffer[deviceIdLength] = '\n';
-		memcpy(messageBuffer+deviceIdLength+1,message,messageLength);
+		memcpy(messageBuffer+deviceIdLength+1,MESSAGE,strlen(MESSAGE));
+		memcpy(messageBuffer+deviceIdLength+1+strlen(MESSAGE),message,messageLength);
+		messageBuffer[deviceIdLength+1+strlen(MESSAGE)+messageLength]='\0';
 		if(send(g_clientSocket,messageBuffer,messageBufferSize,0) != messageBufferSize) {
-			fprintf(stderr, "Failed to write message from %s to socket: %s\n",szDeviceId,(const char*)message);
+			fprintf(stderr, "Failed to write message from %s to socket: %s\n",szDeviceId,(const char*)messageBuffer);
 		}
 		free(messageBuffer);
 	}
@@ -39,20 +43,63 @@ void onMessage(const char * szDeviceId, const void * message, size_t messageLeng
 
 void onDevice(const char * szDeviceId, enum ickDiscovery_command change, enum ickDevice_servicetype type)
 {
+	char DEVICE[] = "DEVICE\n";
+	char ADD[] = "ADD\n";
+	char DEL[] = "DEL\n";
+	char UPD[] = "UPD\n";
+	
+	pthread_mutex_lock(&g_receiveMutex);
+
+	size_t deviceIdLength = strlen(szDeviceId);
+	size_t messageBufferSize = deviceIdLength+strlen(DEVICE)+1+4+2;
+	char* messageBuffer = malloc(messageBufferSize+1);
+	memcpy(messageBuffer,szDeviceId,deviceIdLength);
+	messageBuffer[deviceIdLength] = '\n';
+	memcpy(messageBuffer+deviceIdLength+1,DEVICE,strlen(DEVICE));
+	char *p = messageBuffer+deviceIdLength+1+strlen(DEVICE);
+	*p = (int)'0'+type;
+	p++;
+	*p = '\n';
+
+	int nWritten = 0;
 	switch(change) {
 		case ICKDISCOVERY_ADD_DEVICE:
+			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2,ADD,strlen(ADD));
+			messageBuffer[deviceIdLength+1+strlen(DEVICE)+2+strlen(ADD)]='\0';
 			printf("New device %s of type %d\n",szDeviceId,type);
+			if(g_clientSocket != 0) {
+				if((nWritten = send(g_clientSocket,messageBuffer,messageBufferSize,0)) != messageBufferSize) {
+					fprintf(stderr, "Failed to write message from %s to socket: %s\nOnly wrote %d characters out of %d",szDeviceId,(const char*)messageBuffer,nWritten,messageBufferSize);
+				}
+			}
 			break;
 		case ICKDISCOVERY_REMOVE_DEVICE:
+			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2,DEL,strlen(DEL));
+			messageBuffer[deviceIdLength+1+strlen(DEVICE)+2+strlen(DEL)]='\0';
 			printf("Removed device %s\n",szDeviceId);
+			if(g_clientSocket != 0) {
+				if((nWritten = send(g_clientSocket,messageBuffer,messageBufferSize,0)) != messageBufferSize) {
+					fprintf(stderr, "Failed to write message from %s to socket: %s\nOnly wrote %d characters out of %d\n",szDeviceId,(const char*)messageBuffer,nWritten,messageBufferSize);
+				}
+			}
 			break;
 		case ICKDISCOVERY_UPDATE_DEVICE:
+			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2,UPD,strlen(UPD));
+			messageBuffer[deviceIdLength+1+strlen(DEVICE)+2+strlen(UPD)]='\0';
 			printf("Updated device %s of type %d\n",szDeviceId,type);
+			if(g_clientSocket != 0) {
+				if((nWritten = send(g_clientSocket,messageBuffer,messageBufferSize,0)) != messageBufferSize) {
+					fprintf(stderr, "Failed to write message from %s to socket: %s\nOnly wrote %d characters out of %d\n",szDeviceId,(const char*)messageBuffer,nWritten,messageBufferSize);
+				}
+			}
 			break;
 		default:
 			printf("Unknown message in device callback\n");
 			break;
 	}
+	free(messageBuffer);
+	pthread_mutex_unlock(&g_receiveMutex);
+	
 }
 char* skipDelimiters(char* message) 
 {
