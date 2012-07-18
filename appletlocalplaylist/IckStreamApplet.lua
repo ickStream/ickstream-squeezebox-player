@@ -408,6 +408,7 @@ function _playCurrentTrack(self, sink)
 							sink(false)
 						else
 							self:_updatePlayerStatusTimestamp()
+							self:_sendPlayerStatusChangedNotification()
 							sink(true)
 						end
 					end,
