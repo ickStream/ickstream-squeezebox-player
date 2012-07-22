@@ -32,6 +32,7 @@ local hasNetworking, Networking  = pcall(require, "jive.net.Networking")
 local Player           = require("jive.slim.Player")
 local Timer            = require("jive.ui.Timer")
 local SocketTcp        = require("jive.net.SocketTcp")
+local SocketHttp       = require("jive.net.SocketHttp")
 local lfs              = require("lfs")
 local json             = require("json")
 local md5              = require("md5")
@@ -433,40 +434,45 @@ function _updateIpAddressInCloud(self)
 					log:warn(err)
 				elseif chunk then
 					chunk = json.decode(chunk)
-					if chunk.data.error then
-						log:warn("Unable to register IP address in cloud: "..chunk.data.error.code..": "..chunk.data.error.message)
+					if chunk.error then
+						log:warn("Unable to register IP address in cloud: "..chunk.error.code..": "..chunk.error.message)
+					else
+						log:debug("Successfully updated device access in cloud")
 					end
 				end
 			end,
-			'POST', "/ickstream-cloud-code/jsonrpc",
+			'POST', "/ickstream-cloud-core/jsonrpc",
 			{
-				t_bodySource = function()
-					local sent = false
-					ltn12.source.chain(
-		                function()
-		                        if sent then
-		                                return nil
-		                        else
-		                                sent = true
-		                                return {
-		                                	jsonrpc = "2.0",
-		                                	id = 1,
-		                                	method = "setDeviceAddress",
-		                                	params = {
-		                                		address = ipAddress
-		                                	}
-		                                }
-		                        end
-		                end, 
-		                jsonfilters.encode
-					)
-				end,
+				t_bodySource = _getBodySource(
+					{
+						jsonrpc = "2.0",
+						id = 1,
+						method = "setDeviceAddress",
+						params = {
+							address = ipAddress
+						}
+					}),
 				headers = {
 					Authorization = 'OAuth '..accessToken
 				}
 			})
 			http:fetch(req)
 	end
+end
+
+function _getBodySource(data)
+	local sent = false
+	return ltn12.source.chain(
+		function()
+			if sent then
+				return nil
+			else
+				sent = true
+				return data
+			end
+		end, 
+		jsonfilters.encode
+	)
 end
 
 function _sendPlayerStatusChangedNotification(self)
