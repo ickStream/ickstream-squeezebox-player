@@ -673,7 +673,7 @@ function _removeTracks(self,params,sink)
 		else
 			-- If no position has been specified
 			local itemsToDelete = {}
-			for i,previousItem in pairs(self.playlistTracks) do
+			for i,previousItem in pairs(modifiedPlaylist) do
 				if item.id == previousItem.id then
 					if i <= modifiedIndex then
 						modifiedIndex = modifiedIndex - 1
@@ -684,7 +684,7 @@ function _removeTracks(self,params,sink)
 				end
 			end
 			for _,item in pairs(itemsToDelete) do
-				table.remove(modifiedPlaylist,i)
+				table.remove(modifiedPlaylist,item)
 			end
 		end
 	end
