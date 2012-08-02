@@ -25,6 +25,7 @@
 #include <strings.h>
 #include <sys/queue.h>
 #include <ctype.h>
+#include <stdbool.h>
 
 #include "libwebsockets.h"
 
@@ -268,7 +269,7 @@ void _ick_init_discovery_registry(ickDiscovery_t * _ick_discovery);
 void _ick_close_discovery_registry (int wait);
 
 int _ick_add_service (const char * st, const char * usn, const char * server, const char * location);
-int _ick_remove_service(const char * st);
+int _ick_remove_service(const char * st, bool lock);
 int _ick_notifications_send (enum _ick_send_cmd command, struct _upnp_service * service);
 
 struct _ick_device_struct * _ickDeviceCreateNew(char * UUID, char * URL, void * element, enum ickDevice_servicetype type, struct libwebsocket * wsi);

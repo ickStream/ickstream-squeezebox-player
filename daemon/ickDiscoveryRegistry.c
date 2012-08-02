@@ -907,8 +907,9 @@ int _ick_add_service (const char * st, const char * usn, const char * server, co
 // returns  0 on success
 //          -1 on failure
 
-int _ick_remove_service(const char * st) {
-    pthread_mutex_lock(&_ick_sender_mutex);
+int _ick_remove_service(const char * st, bool lock) {
+    if (lock)
+        pthread_mutex_lock(&_ick_sender_mutex);
     struct _upnp_service * service = servicelisthead.lh_first;
     while (service) {
         if (!strcmp(st, service->st)) {
@@ -921,12 +922,14 @@ int _ick_remove_service(const char * st) {
             free(service->location);
             free(service->usn);
             free(service);
-            pthread_mutex_unlock(&_ick_sender_mutex);
+            if (lock)
+                pthread_mutex_unlock(&_ick_sender_mutex);
             return 0;
         }
         service = service->entries.le_next;
     }
-    pthread_mutex_unlock(&_ick_sender_mutex);
+    if (lock)
+        pthread_mutex_unlock(&_ick_sender_mutex);
     return -1;
 }
 
@@ -1576,7 +1579,7 @@ void _ick_init_discovery_registry (ickDiscovery_t * disc) {
 void _ick_close_discovery_registry (int wait) {
     pthread_mutex_lock(&_ick_sender_mutex);
     while (servicelisthead.lh_first) {
-        _ick_remove_service(servicelisthead.lh_first->st);
+        _ick_remove_service(servicelisthead.lh_first->st, false);
     };
     // shutdown sender thread;
     _ick_notifications_send(ICK_SEND_QUIT, NULL);

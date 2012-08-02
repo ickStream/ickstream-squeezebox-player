@@ -669,9 +669,10 @@ int _ickInitP2PComm (struct _ick_discovery_struct * disc, int port) {
 }
 
 int _ickCloseP2PComm(int wait) {
-    libwebsocket_context_destroy(__context);
+    __quit_thread = 1;
     if (wait)
         pthread_join(__service_thread, NULL);
+    libwebsocket_context_destroy(__context);
     return 0;
 }
 
