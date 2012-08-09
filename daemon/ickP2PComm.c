@@ -58,6 +58,22 @@ static int __ickInsertMessage(struct _ick_device_struct * device, struct _ick_me
             message = message->next;
         message->next = newMessage;
     }
+    
+    // insert empty dummy message
+    struct _ick_message_struct * emptyMessage = malloc(sizeof(struct _ick_message_struct));
+    if (!emptyMessage)
+        return 0;
+    unsigned char * dummydata = malloc(LWS_SEND_BUFFER_PRE_PADDING + 1 + LWS_SEND_BUFFER_POST_PADDING);
+    if (!dummydata) {
+        free(emptyMessage);
+        return 0;
+    }
+    dummydata[LWS_SEND_BUFFER_PRE_PADDING] = 0;
+    emptyMessage->paddedData = dummydata;
+    emptyMessage->next = NULL;
+    emptyMessage->size = 1;
+    newMessage->next = emptyMessage;
+
     pthread_mutex_unlock(device->messageMutex);
     return 0;
 }
@@ -378,12 +394,21 @@ _ick_callback_p2p_server(struct libwebsocket_context * context,
                 }
             } else {    // complete? call callback
                 if (pss->bufIn) {    // we have a concatenated packet?
-                    _ick_execute_MessageCallback(device, pss->bufIn, pss->bufLen, ICKMESSAGE_INCOMING_DATA);
+                    if (pss->bufLen == 1)
+                        if (pss->bufIn[0] == 0) // ignore empty packets
+                            pss->bufLen = 0;
+                    if (pss->bufLen)
+                        _ick_execute_MessageCallback(device, pss->bufIn, pss->bufLen, ICKMESSAGE_INCOMING_DATA);
                     free(pss->bufIn);
                     pss->bufIn = NULL;
                     pss->bufLen = 0;
-                } else  // this should be the usual case: return packet in one
-                    _ick_execute_MessageCallback(device, in, len, ICKMESSAGE_INCOMING_DATA);
+                } else {  // this should be the usual case: return packet in one
+                    if (len == 1)
+                        if (((unsigned char *)in)[0] == 0)
+                            len = 0;
+                    if (len)
+                        _ick_execute_MessageCallback(device, in, len, ICKMESSAGE_INCOMING_DATA);
+                }
                 // try to write packet since we assume that the application will at least try to send an acknowledge packet.
                 libwebsocket_callback_on_writable(context, wsi);
             }
@@ -678,6 +703,7 @@ int _ickCloseP2PComm(int wait) {
 
 // send a message to device UUID
 enum ickMessage_communicationstate ickDeviceSendMsg(const char * UUID, const void * message, const size_t message_size) {
+    
     struct _ick_device_struct * device = _ickDeviceGet(UUID);
     if (!device)
         return ICKMESSAGE_UNKNOWN_TARGET;
