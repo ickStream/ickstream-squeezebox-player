@@ -595,13 +595,13 @@ function _getPlaylist(self,params,sink)
 	local i = 1
 	result.offset = offset
 	result.countAll = #self.playlistTracks
-	result.tracks_loop = {}
+	result.items = {}
 	while offset<#self.playlistTracks do
-		result.tracks_loop[i] = self.playlistTracks[offset+1]
+		result.items[i] = self.playlistTracks[offset+1]
 		i = i + 1
 		offset = offset + 1
 	end
-	result.count = #result.tracks_loop
+	result.count = #result.items
 	sink(result)
 end
 
@@ -610,21 +610,21 @@ function _addTracks(self,params,sink)
 		self:_updatePlaylistTimestamp()
 		-- Add in middle
 		local i = params.playlistPos + 1
-		for _,item in ipairs(params.tracks_loop) do
+		for _,item in ipairs(params.items) do
 			table.insert(self.playlistTracks, i, item)
 			i = i + 1
 		end
 		
 		-- Modify playlist position if it was after the inserted tracks
 		if self.playlistIndex ~= nil and self.playlistIndex>=paramsPlaylistPos then
-			self.playlistIndex = self.playlistIndex + #params.tracks_loop
+			self.playlistIndex = self.playlistIndex + #params.items
 			self:_updatePlayerStatusTimestamp()
 			self:_sendPlayerStatusChangedNotification()
 		end
 	else
 		self:_updatePlaylistTimestamp()
 		-- Add at end
-		for _,item in ipairs(params.tracks_loop) do
+		for _,item in ipairs(params.items) do
 			table.insert(self.playlistTracks,item)
 		end
 		
@@ -652,7 +652,7 @@ function _removeTracks(self,params,sink)
 	local modifiedIndex = self.playlistIndex
 	local affectsPlayback = false
 	
-	for _,item in ipairs(params.tracks_loop) do
+	for _,item in ipairs(params.items) do
 		if item.playlistPos ~= nil then
 			-- If specific position has been specified
 			local previousItem = self.playlistTracks[item.playlistPos + 1]
@@ -735,10 +735,10 @@ end
 function _setTracks(self,params,sink)
 	self.playlistId = params.playlistId
 	self.playlistName = params.playlistName
-	self.playlistTracks = params.tracks_loop
+	self.playlistTracks = params.items
 	
 	local playlistPos = params.playlistPos or 0
-	if #self.playlistTracks > 0 and params.playlistPos < params.tracks_loop then
+	if #self.playlistTracks > 0 and params.playlistPos < params.items then
 		_setTrack({
 			playlistPos = params.playlistPos
 		},function(result,err)

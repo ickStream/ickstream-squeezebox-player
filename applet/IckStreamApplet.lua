@@ -546,7 +546,7 @@ function _getPlaylist(self,params,sink)
 						offset = offset,
 						count = #resultitems,
 						countAll = player:getPlaylistSize(),
-						tracks_loop = resultitems
+						items = resultitems
 					}
 					sink(result)
 				end
@@ -566,7 +566,7 @@ function _addTracks(self,params,sink)
 	local player = Player:getLocalPlayer()
 	if player and player:getSlimServer() and player:getSlimServer():isConnected() then
 		local i = 1
-		for _,item in ipairs(params.tracks_loop) do
+		for _,item in ipairs(params.items) do
 			self.playlistTracksById[item.id] = item
 			if item.streamingRefs[1] then
 				self.playlistTracksByUrl[item.streamingRefs[1].url] = item
@@ -574,7 +574,7 @@ function _addTracks(self,params,sink)
 			i=i+1
 		end
 	
-		for _,item in ipairs(params.tracks_loop) do
+		for _,item in ipairs(params.items) do
 			if item.streamingRefs[1] and item.streamingRefs[1].url then
 				local url = item.streamingRefs[1].url
 				if url then
@@ -611,7 +611,7 @@ function _removeTracks(self,params,sink)
 	local player = Player:getLocalPlayer()
 	if player and player:getSlimServer() and player:getSlimServer():isConnected() then
 		local removed = 0
-		for _,item in ipairs(params.tracks_loop) do
+		for _,item in ipairs(params.items) do
 			if item.playlistPos then
 				player:getSlimServer():userRequest(function(chunk,err)
 						if err then
