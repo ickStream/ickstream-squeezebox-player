@@ -65,7 +65,11 @@ function init(self)
 	self.serviceInformationRequests = {}
 	self.serviceInformationRequestId = 1
 	os.execute("chmod +x ".._getAppletDir().."IckStream/ickSocketDaemon")
-	os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon &")
+	if log:isDebug() then
+		os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon > /var/log/ickstream.log &")
+	else
+		os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon &")
+	end
 	Timer(5000,
 		function() 
 			self:_initializeSocket() 
@@ -92,6 +96,73 @@ end
 function _initializeSocket(self)
 	self.socket = SocketTcp(jnt, "127.0.0.1", 20530, "ickstream")
 	self.socket:t_connect();
+	self.socket:t_addRead(function()
+					   local chunk, err, partial = self.socket.t_sock:receive(100000)
+					   if err and err ~= "timeout" then
+							-- TODO: Add proper error handling
+						   log:error(err)
+						   self.socket:t_removeRead()
+					   else
+					       local nextMsg = string.find((chunk or partial), "\n!END!\n");
+					       local message
+					       if nextMsg ~= nil then
+					           message = string.sub((chunk or partial),0,nextMsg)
+					       else
+					           message = string.sub((chunk or partial),0)
+					       end
+					       while message ~= nil and string.len(message)>0 do
+							   local i = string.find(message, "\n", 0)  
+							   local deviceId = string.sub(message,0,i-1)
+							   local j = string.find(message, "\n", i+1)  
+							   local messageType = string.sub(message,i+1,j-1)
+							   if messageType == "MESSAGE" then
+								   local jsonData = json.decode(string.sub(message,j+1))
+								   log:info("GOT MESSAGE (from "..deviceId.."): ".. string.sub(message,j+1))
+								   if jsonData then
+								   		if jsonData.method then
+									   		if not jsonData.params then
+									   			jsonData.params = {}
+									   		end
+									   		self:_handleJSONRPCRequest(deviceId, jsonData)
+									   	else
+									   		self:_handleJSONRPCResponse(deviceId, jsonData)
+									   	end
+								   end
+								elseif messageType == "DEVICE" then
+									local k = string.find(message,"\n",j+1);
+									local services = string.sub(message,j+1,k-1)
+									local updateType = string.sub(message,k+1,k+3)
+									log:info("GOT DEVICE (from "..deviceId.."): updateType="..updateType..", services="..services)
+									if (updateType == "UPD" or updateType == "ADD") and (services == "4" or services == "5" or services == "6") then
+										Timer(1000,
+											function() 
+												local id = self.serviceInformationRequestId
+												self.serviceInformationRequestId = self.serviceInformationRequestId + 1
+												self.serviceInformationRequests[id] = deviceId
+												self:_sendJsonRpcRequest(deviceId,"2.0",id,"getServiceInformation",nil)
+											end,
+											true
+											):start()
+									end
+								else 
+									log:warn("Unknown message type");
+								end
+								
+								if nextMsg ~= nil then
+									local terminator = string.find((chunk or partial),"\n!END!\n",nextMsg+7)
+									if terminator ~= nil then
+										message = string.sub((chunk or partial),nextMsg+7,terminator)
+									else
+										message = string.sub((chunk or partial),nextMsg+7)
+									end
+									nextMsg=terminator
+								else
+									message = nil
+								end
+							end
+						end
+				   end, 
+				   0)
 	self.socket:t_addWrite(function(err)
 						log:info("About to initialize ickSocketDaemon")
 						if (err) then
@@ -119,53 +190,6 @@ function _initializeSocket(self)
 						self.socket:t_removeWrite()
 					end,
 					10)
-	self.socket:t_addRead(function()
-					   local chunk, err, partial = self.socket.t_sock:receive(100000)
-					   local message = chunk or partial
-					   if err and err ~= "timeout" then
-							-- TODO: Add proper error handling
-						   log:error(err)
-						   self.socket:t_removeRead()
-					   else
-						   local i = string.find(message, "\n", 0)  
-						   local deviceId = string.sub(message,0,i-1)
-						   local j = string.find(message, "\n", i+1)  
-						   local messageType = string.sub(message,i+1,j-1)
-						   if messageType == "MESSAGE" then
-							   local jsonData = json.decode(string.sub(message,j+1))
-							   log:info("GOT MESSAGE (from "..deviceId.."): ".. string.sub(message,j+1))
-							   if jsonData then
-							   		if jsonData.method then
-								   		if not jsonData.params then
-								   			jsonData.params = {}
-								   		end
-								   		self:_handleJSONRPCRequest(deviceId, jsonData)
-								   	else
-								   		self:_handleJSONRPCResponse(deviceId, jsonData)
-								   	end
-							   end
-							elseif messageType == "DEVICE" then
-								local k = string.find(message,"\n",j+1);
-								local services = string.sub(message,j+1,k-1)
-								local updateType = string.sub(message,k+1,k+3)
-								log:info("GOT DEVICE (from "..deviceId.."): updateType="..updateType..", services="..services)
-								if (updateType == "UPD" or updateType == "ADD") and (services == "4" or services == "5" or services == "6") then
-									Timer(1000,
-										function() 
-											local id = self.serviceInformationRequestId
-											self.serviceInformationRequestId = self.serviceInformationRequestId + 1
-											self.serviceInformationRequests[id] = deviceId
-											self:_sendJsonRpcRequest(deviceId,"2.0",id,"getServiceInformation",nil)
-										end,
-										true
-										):start()
-								end
-							else 
-								log:warn("Unknown message type");
-							end
-						end
-				   end, 
-				   0)
 end
 
 function _getCurrentIpAddress(self)
@@ -397,6 +421,8 @@ function _playCurrentTrack(self, sink)
 						log:warn("Replacing: "..currentTrack.streamingRefs[1].url.."\nWith: "..self.localServices[text])
 						streamingUrl = string.gsub(currentTrack.streamingRefs[1].url,"service://[^/]*",self.localServices[text])
 						log:warn("Resulting in: "..streamingUrl)
+					else
+						log:warn("Can't resolve "..text)
 					end
 				else
 					streamingUrl = currentTrack.streamingRefs[1].url
@@ -851,6 +877,7 @@ function _play(self,params,sink)
 	if player and player:getSlimServer() and player:getSlimServer():isConnected() then
 		if self.playlistIndex ~= nil and params.playing ~= nil then
 			if not playing and params.playing then
+				log:debug("Switching from pause to play")
 				self:_playCurrentTrack(function(success)
 						if success then
 							sink({
@@ -864,6 +891,7 @@ function _play(self,params,sink)
 					end
 				)
 			elseif playing and not params.playing then
+				log:debug("Switching from play to pause")
 				player:getSlimServer():userRequest(function(chunk,err)
 						if err then
 							log:warn(err)
@@ -878,6 +906,7 @@ function _play(self,params,sink)
 					{'pause'}
 				)
 			elseif params.playing then
+				log:debug("Switching currently playing track")
 				self:_playCurrentTrack(function(success)
 						if success then
 							sink({

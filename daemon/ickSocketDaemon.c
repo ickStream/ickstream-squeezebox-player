@@ -21,20 +21,26 @@ static pthread_mutex_t g_receiveMutex = PTHREAD_MUTEX_INITIALIZER;
 void onMessage(const char * szDeviceId, const void * message, size_t messageLength, enum ickMessage_communicationstate state)
 {
 	char MESSAGE[] = "MESSAGE\n";
+	char END[] = "\n!END!\n";
 	
+	printf("onMessage called\n");
+	fflush (stdout);
 	pthread_mutex_lock(&g_receiveMutex);
 	printf("Message from %s: %s\n", szDeviceId,(const char *)message);
+	fflush (stdout);
 	if(g_clientSocket != 0) {
-		size_t messageBufferSize = strlen(szDeviceId)+messageLength+strlen(MESSAGE)+1;
+		size_t messageBufferSize = strlen(szDeviceId)+messageLength+strlen(MESSAGE)+1+strlen(END);
 		size_t deviceIdLength = strlen(szDeviceId);
 		char* messageBuffer = malloc(messageBufferSize+1);
 		memcpy(messageBuffer,szDeviceId,deviceIdLength);
 		messageBuffer[deviceIdLength] = '\n';
 		memcpy(messageBuffer+deviceIdLength+1,MESSAGE,strlen(MESSAGE));
 		memcpy(messageBuffer+deviceIdLength+1+strlen(MESSAGE),message,messageLength);
-		messageBuffer[deviceIdLength+1+strlen(MESSAGE)+messageLength]='\0';
+		memcpy(messageBuffer+deviceIdLength+1+strlen(MESSAGE)+messageLength,END,strlen(END));
+		messageBuffer[deviceIdLength+1+strlen(MESSAGE)+messageLength+strlen(END)]='\0';
 		if(send(g_clientSocket,messageBuffer,messageBufferSize,0) != messageBufferSize) {
 			fprintf(stderr, "Failed to write message from %s to socket: %s\n",szDeviceId,(const char*)messageBuffer);
+			fflush (stderr);
 		}
 		free(messageBuffer);
 	}
@@ -47,11 +53,13 @@ void onDevice(const char * szDeviceId, enum ickDiscovery_command change, enum ic
 	char ADD[] = "ADD\n";
 	char DEL[] = "DEL\n";
 	char UPD[] = "UPD\n";
-	
+	char END[] = "!END!\n";
+	printf("onDevice called\n");
+	fflush (stdout);
 	pthread_mutex_lock(&g_receiveMutex);
 
 	size_t deviceIdLength = strlen(szDeviceId);
-	size_t messageBufferSize = deviceIdLength+strlen(DEVICE)+1+4+2;
+	size_t messageBufferSize = deviceIdLength+strlen(DEVICE)+1+4+2+strlen(END);
 	char* messageBuffer = malloc(messageBufferSize+1);
 	memcpy(messageBuffer,szDeviceId,deviceIdLength);
 	messageBuffer[deviceIdLength] = '\n';
@@ -65,31 +73,37 @@ void onDevice(const char * szDeviceId, enum ickDiscovery_command change, enum ic
 	switch(change) {
 		case ICKDISCOVERY_ADD_DEVICE:
 			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2,ADD,strlen(ADD));
-			messageBuffer[deviceIdLength+1+strlen(DEVICE)+2+strlen(ADD)]='\0';
+			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2+strlen(ADD),END,strlen(END));
+			messageBuffer[deviceIdLength+1+strlen(DEVICE)+2+strlen(ADD)+strlen(END)]='\0';
 			printf("New device %s of type %d\n",szDeviceId,type);
 			if(g_clientSocket != 0) {
 				if((nWritten = send(g_clientSocket,messageBuffer,messageBufferSize,0)) != messageBufferSize) {
 					fprintf(stderr, "Failed to write message from %s to socket: %s\nOnly wrote %d characters out of %d",szDeviceId,(const char*)messageBuffer,nWritten,messageBufferSize);
+					fflush (stderr);
 				}
 			}
 			break;
 		case ICKDISCOVERY_REMOVE_DEVICE:
 			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2,DEL,strlen(DEL));
-			messageBuffer[deviceIdLength+1+strlen(DEVICE)+2+strlen(DEL)]='\0';
+			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2+strlen(DEL),END,strlen(END));
+			messageBuffer[deviceIdLength+1+strlen(DEVICE)+2+strlen(DEL)+strlen(END)]='\0';
 			printf("Removed device %s\n",szDeviceId);
 			if(g_clientSocket != 0) {
 				if((nWritten = send(g_clientSocket,messageBuffer,messageBufferSize,0)) != messageBufferSize) {
 					fprintf(stderr, "Failed to write message from %s to socket: %s\nOnly wrote %d characters out of %d\n",szDeviceId,(const char*)messageBuffer,nWritten,messageBufferSize);
+					fflush (stderr);
 				}
 			}
 			break;
 		case ICKDISCOVERY_UPDATE_DEVICE:
 			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2,UPD,strlen(UPD));
-			messageBuffer[deviceIdLength+1+strlen(DEVICE)+2+strlen(UPD)]='\0';
+			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2+strlen(UPD),END,strlen(END));
+			messageBuffer[deviceIdLength+1+strlen(DEVICE)+2+strlen(UPD)+strlen(END)]='\0';
 			printf("Updated device %s of type %d\n",szDeviceId,type);
 			if(g_clientSocket != 0) {
 				if((nWritten = send(g_clientSocket,messageBuffer,messageBufferSize,0)) != messageBufferSize) {
 					fprintf(stderr, "Failed to write message from %s to socket: %s\nOnly wrote %d characters out of %d\n",szDeviceId,(const char*)messageBuffer,nWritten,messageBufferSize);
+					fflush (stderr);
 				}
 			}
 			break;
@@ -99,7 +113,6 @@ void onDevice(const char * szDeviceId, enum ickDiscovery_command change, enum ic
 	}
 	free(messageBuffer);
 	pthread_mutex_unlock(&g_receiveMutex);
-	
 }
 char* skipDelimiters(char* message) 
 {
@@ -133,6 +146,7 @@ void handleMessage(char* message) {
 		printf("Sending message to %s: %s\n",deviceId, message);
 		ickDeviceSendMsg(deviceId,message,strlen(message));
 	}
+	fflush (stdout);
 }
 
 void handleInitialization(int socketfd, char* message) {
@@ -170,13 +184,14 @@ void handleInitialization(int socketfd, char* message) {
 	}
 	deviceName[i] = '\0';
 
-	printf("Initializing ickP2P %s...\n");
+	printf("Initializing ickP2P for %s(%s) at %s...\n",deviceName,deviceId,networkAddress);
+    g_clientSocket = socketfd;
     ickDeviceRegisterMessageCallback(&onMessage);
     ickDeviceRegisterDeviceCallback(&onDevice);
     ickInitDiscovery(deviceId, networkAddress,NULL);
     ickDiscoverySetupConfigurationData(deviceName, NULL);
     ickDiscoveryAddService(ICKDEVICE_PLAYER);
-    g_clientSocket = socketfd;
+	fflush (stdout);
 }
 
 static void* client_thread(void *arg) {
@@ -204,6 +219,7 @@ static void* client_thread(void *arg) {
 			}
 		}
 		printf("Processing ickSocketDaemon message\n");
+		fflush (stdout);
 		if(strncmp("MESSAGE",finalBuffer,7)==0) {
 			handleMessage(finalBuffer+7);
 		}else if(strncmp("INIT",finalBuffer,4)==0) {
@@ -214,6 +230,7 @@ static void* client_thread(void *arg) {
 			break;
 		}else {
 			fprintf(stderr, "Unknown command %s",buffer);
+			fflush (stderr);
 		}
 		free(finalBuffer);
 	}
@@ -228,6 +245,7 @@ int main( int argc, const char* argv[] )
 	// resolve localhost to an IP (should be 127.0.0.1)
 	if ((he = gethostbyname("localhost")) == NULL) {
 		fprintf(stderr, "Error resolving hostname..");
+		fflush (stderr);
 		return 1;
 	}
 
@@ -244,6 +262,7 @@ int main( int argc, const char* argv[] )
 
     if (bind(g_serverSocket, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
         fprintf(stderr, "Unable to bind to server socket");
+		fflush (stderr);
         return 1;
     }
 
@@ -264,6 +283,8 @@ int main( int argc, const char* argv[] )
 		close(g_clientSocket);
 	}
 	printf("Shutting down ickP2P...\n");
+	fflush (stdout);
 	ickEndDiscovery(1);
+	fflush (stdout);
 	return 0;
 }	
