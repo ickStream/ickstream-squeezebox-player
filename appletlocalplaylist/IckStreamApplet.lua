@@ -616,7 +616,7 @@ function _addTracks(self,params,sink)
 		end
 		
 		-- Modify playlist position if it was after the inserted tracks
-		if self.playlistIndex ~= nil and self.playlistIndex>=paramsPlaylistPos then
+		if self.playlistIndex ~= nil and self.playlistIndex>=params.playlistPos then
 			self.playlistIndex = self.playlistIndex + #params.items
 			self:_updatePlayerStatusTimestamp()
 			self:_sendPlayerStatusChangedNotification()
@@ -729,7 +729,90 @@ end
 				
 					
 function _moveTracks(self,params,sink)
-	sink(_notImplemented())
+	local modifiedPlaylist = {}
+	for k,item in pairs(self.playlistTracks) do
+		modifiedPlaylist[k] = item
+	end
+	local modifiedIndex = self.playlistIndex
+	local affectsPlayback = false
+	local wantedIndex = params.playlistPos or #self.playlistTracks
+	
+	for _,item in ipairs(params.items) do
+		if item.playlistPos ~= nil then
+			-- Move that doesn't affect playlist position
+			if (wantedIndex<=modifiedIndex and item.playlistPos<modifiedIndex) or
+				(wantedIndex>modifiedIndex and item.playlistPos>modifiedIndex) then
+			
+				local movedItem = table.remove(modifiedPlaylist,item.playlistPos + 1)
+				local offset = 0
+				if wantedIndex >= item.playlistPos then
+					offset = -1
+				end
+				
+				if wantedIndex + offset < #modifiedPlaylist then
+					table.insert(modifiedPlaylist, wantedIndex + offset + 1, movedItem)
+				else
+					table.insert(modifiedPlaylist, movedItem)
+				end
+				
+				if wantedIndex < item.playlistPos then
+					wantedIndex = wantedIndex + 1
+				end
+				
+			-- Move that increase playlist position
+			elseif wantedIndex<=modifiedIndex and item.playlistPos>modifiedIndex then
+
+				local movedItem = table.remove(modifiedPlaylist,item.playlistPos + 1)
+				table.insert(modifiedPlaylist, wantedIndex + 1, movedItem)
+				modifiedIndex = modifiedIndex + 1
+				wantedIndex = wantedIndex + 1
+				
+			-- Move that decrease playlist position
+			elseif wantedIndex>modifiedIndex and item.playlistPos<modifiedIndex then
+			
+				local movedItem = table.remove(modifiedPlaylist,item.playlistPos + 1)
+				local offset = 0
+				if wantedIndex >= item.playlistPos then
+					offset = -1
+				end
+				if wantedIndex + offset < #modifiedPlaylist then
+					table.insert(modifiedPlaylist, wantedIndex + offset + 1, movedItem)
+				else
+					table.insert(modifiedPlaylist, movedItem)
+				end
+				modifiedIndex = modifiedIndex - 1
+								
+			-- Move of currently playing track
+			elseif item.playlistPos == modifiedIndex then
+			
+				local movedItem = table.remove(modifiedPlaylist,item.playlistPos + 1)
+				if wantedIndex < #modifiedPlaylist then
+					table.insert(modifiedPlaylist, wantedIndex + 1, movedItem)
+				else
+					table.insert(modifiedPlaylist, movedItem)
+				end
+				modifiedIndex = wantedIndex
+				if wantedIndex < item.playlistPos then
+					wantedIndex = wantedIndex + 1
+				end
+				
+			end
+		end
+	end
+	
+	self.playlistTracks = modifiedPlaylist
+	if self.playlistIndex ~= modifiedIndex then
+		self.playlistIndex = modifiedIndex
+		self:_updatePlayerStatusTimestamp()
+		self:_sendPlayerStatusChangedNotification()
+	end
+	self:_updatePlaylistTimestamp()
+	self:_sendPlaylistChangedNotification()
+		
+	sink({
+		result = true,
+		playlistPos = self.playlistIndex
+	})
 end
 
 function _setTracks(self,params,sink)
@@ -738,9 +821,9 @@ function _setTracks(self,params,sink)
 	self.playlistTracks = params.items
 	
 	local playlistPos = params.playlistPos or 0
-	if #self.playlistTracks > 0 and params.playlistPos < params.items then
-		_setTrack({
-			playlistPos = params.playlistPos
+	if #self.playlistTracks > 0 and playlistPos < #params.items then
+		self:_setTrack({
+			playlistPos = playlistPos
 		},function(result,err)
 		end)
 	else
@@ -757,7 +840,7 @@ function _setTracks(self,params,sink)
 
 	sink({
 		result = true,
-		playlistPos = #self.playlistIndex
+		playlistPos = self.playlistIndex
 	})
 end
 
