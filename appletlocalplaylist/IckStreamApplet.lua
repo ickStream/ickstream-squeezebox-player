@@ -66,7 +66,7 @@ function init(self)
 	self.serviceInformationRequestId = 1
 	os.execute("chmod +x ".._getAppletDir().."IckStream/ickSocketDaemon")
 	if log:isDebug() then
-		os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon > /var/log/ickstream.log &")
+		os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon > /var/log/ickstream.log 2>&1 &")
 	else
 		os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon &")
 	end
@@ -300,10 +300,10 @@ end
 
 function _handleJSONRPCResponse(self, deviceId, json)
 	if not json.error then
-		if json.id and self.serviceInformationRequests[json.id] then
-			log:info("Storing serviceUrl of "..self.serviceInformationRequests[json.id].."="..json.result.serviceUrl)
-			self.localServices[self.serviceInformationRequests[json.id]] = json.result.serviceUrl
-			self.serviceInformationRequests[json.id] = nil
+		if json.id and self.serviceInformationRequests[tonumber(json.id)] then
+			log:info("Storing serviceUrl of "..self.serviceInformationRequests[tonumber(json.id)].."="..json.result.serviceUrl)
+			self.localServices[self.serviceInformationRequests[tonumber(json.id)]] = json.result.serviceUrl
+			self.serviceInformationRequests[tonumber(json.id)] = nil
 		end
 	else
 		log:warn("JSON-RPC Response with error: "..json.error.code..": "..json.error.message.."\n"..json.error.data)
