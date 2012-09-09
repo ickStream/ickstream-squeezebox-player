@@ -9,6 +9,7 @@ MINISSDPDOBJS=minissdpd/openssdpsocket.o minissdpd/upnputils.o
 LIBWEBSOCKETSOBJS=libwebsockets/lib/libwebsockets.o libwebsockets/lib/sha-1.o libwebsockets/lib/parsers.o libwebsockets/lib/md5.o libwebsockets/lib/handshake.o libwebsockets/lib/extension.o libwebsockets/lib/base64-decode.o libwebsockets/lib/client-handshake.o libwebsockets/lib/extension-deflate-stream.o libwebsockets/lib/extension-x-google-mux.o
 LIBS=-lz
 all: $(OBJS) minissdpd/libminissdpd.a miniupnp/libminiupnp.a libwebsockets/lib/libwebsockets.a ickSocketDaemon
+DEBUGFLAGS=
 
 clean: 
 	$(RM) $(OBJS)
@@ -17,16 +18,16 @@ clean:
 	cd libwebsockets/lib;$(MAKE) $(MFLAGS) clean
 
 ickDiscovery.o: ickDiscovery.c ickDiscovery.h
-	$(CC) $(INTERNALINCLUDES) $(INCLUDES) $(CFLAGS) -c -o ickDiscovery.o ickDiscovery.c
+	$(CC) $(INTERNALINCLUDES) $(INCLUDES) $(CFLAGS) $(DEBUGFLAGS) -c -o ickDiscovery.o ickDiscovery.c
 
 ickDiscoveryRegistry.o: ickDiscoveryRegistry.c
-	$(CC) $(INTERNALINCLUDES) $(INCLUDES) $(CFLAGS) -c -o ickDiscoveryRegistry.o ickDiscoveryRegistry.c
+	$(CC) $(INTERNALINCLUDES) $(INCLUDES) $(CFLAGS) $(DEBUGFLAGS) -c -o ickDiscoveryRegistry.o ickDiscoveryRegistry.c
 
 ickP2PComm.o: ickP2PComm.c
-	$(CC) $(INTERNALINCLUDES) $(INCLUDES) $(CFLAGS) -c -o ickP2PComm.o ickP2PComm.c
+	$(CC) $(INTERNALINCLUDES) $(INCLUDES) $(CFLAGS) $(DEBUGFLAGS) -c -o ickP2PComm.o ickP2PComm.c
 
 ickSocketDaemon.o: ickSocketDaemon.c ickDiscovery.h
-	$(CC) $(INTERNALINCLUDES) $(INCLUDES) $(CFLAGS) -c -o ickSocketDaemon.o ickSocketDaemon.c
+	$(CC) $(INTERNALINCLUDES) $(INCLUDES) $(CFLAGS) $(DEBUGFLAGS) -c -o ickSocketDaemon.o ickSocketDaemon.c
 
 minissdpd/libminissdpd.a: force_look
 	cd minissdpd;$(MAKE) $(MFLAGS)
