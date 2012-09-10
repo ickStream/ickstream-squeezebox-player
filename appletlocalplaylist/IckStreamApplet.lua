@@ -172,7 +172,7 @@ function _initializeSocket(self)
 						local ipAddress = self:_getCurrentIpAddress()
 						local uuid = System:getUUID()
 						if uuid then
-							uuid = string.upper(string.sub(uuid,1,8)).."-"..string.upper(string.sub(uuid,9,12)).."-"..string.upper(string.sub(uuid,13,16)).."-"..string.upper(string.sub(uuid,17,20)).."-"..string.upper(string.sub(uuid,21,32))
+							uuid = string.upper(string.sub(uuid,1,8)).."-"..string.upper(string.sub(uuid,9,12)).."-"..string.upper(string.sub(uuid,13,16)).."-"..string.upper(string.sub(uuid,17,20)).."-"..string.upper(string.gsub(System.getMacAddress(),":",""))
 						else
 							uuid = "ED845EB7-274F-4EB1-829D-"..string.upper(string.gsub(System.getMacAddress(),":",""))
 						end
