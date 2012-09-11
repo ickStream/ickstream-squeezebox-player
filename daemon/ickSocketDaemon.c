@@ -141,10 +141,31 @@ void handleMessage(char* message) {
 
 	if(strcmp(deviceId,"ALL")==0) {
 		printf("Sending notification %s\n",message);
-		ickDeviceSendMsg(NULL,message,strlen(message));
+	    int i=0;
+	    while(i<10) {
+			if(ickDeviceSendMsg(NULL,message,strlen(message)) == ICKMESSAGE_SUCCESS) {
+	            break;
+	        }
+	        sleep(1);
+	        i++;
+	    }
+	    if(i==10) {
+	        printf("Failed to send notification\n");
+	    }
 	}else {
 		printf("Sending message to %s: %s\n",deviceId, message);
-		ickDeviceSendMsg(deviceId,message,strlen(message));
+	    int i=0;
+	    while(i<10) {
+			if(ickDeviceSendMsg(deviceId,message,strlen(message)) == ICKMESSAGE_SUCCESS) {
+		        printf("Succeeded to send message after %d retries\n",i);
+	            break;
+	        }
+	        sleep(1);
+	        i++;
+	    }
+	    if(i==10) {
+	        printf("Failed to send message\n");
+	    }
 	}
 	fflush (stdout);
 }
