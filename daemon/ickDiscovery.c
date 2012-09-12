@@ -11,6 +11,8 @@
 //
 
 #include <sys/utsname.h>
+#include <sys/unistd.h>
+#include <sys/fcntl.h>
 
 #include "ickDiscovery.h"
 #include "ickDiscoveryInternal.h"
@@ -212,6 +214,7 @@ static void _ickEndDiscovery(ickDiscovery_t *discovery, int wait) {
     _ick_quit_discovery(discovery);
     
     // the discovery thread does block on receiving messages from the socket, so we need to close it to make sure the thread ends
+    shutdown(discovery->socket, 2);
     close(discovery->socket);
     
     if (!discovery->thread)
@@ -271,9 +274,21 @@ void * _ickDiscovery_poll_thread (void * _disc) {
         addrlen = sizeof(address);
         //        debug("\nstart receiving Data\n");
         memset(buffer, 0, ICKDISCOVERY_HEADER_SIZE_MAX);
-        rcv_size = recvfrom(discovery->socket, buffer, ICKDISCOVERY_HEADER_SIZE_MAX, 0, &address, &addrlen);
         
-        ParseSSDPPacket(discovery, buffer, rcv_size, &address);
+        struct timeval timeout = {1, 0};  // make select() return once per second
+        
+        fd_set readSet;
+        FD_ZERO(&readSet);
+        FD_SET(discovery->socket, &readSet);
+        
+        if (select(discovery->socket+1, &readSet, NULL, NULL, &timeout) >= 0)
+        {
+            if (FD_ISSET(discovery->socket, &readSet))
+            {
+                rcv_size = recvfrom(discovery->socket, buffer, ICKDISCOVERY_HEADER_SIZE_MAX, 0, &address, &addrlen);
+                ParseSSDPPacket(discovery, buffer, rcv_size, &address);
+            }
+        }
         usleep(200);
         
         // receive callbacks might be added dynamically later. So they might initially be NULL, in this case, ignore the message

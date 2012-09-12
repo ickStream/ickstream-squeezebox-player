@@ -1138,7 +1138,7 @@ static char * _ick_notification_create (enum _ick_send_cmd cmd, struct _upnp_ser
                     asprintf(&result, ICK_NOTIFICATION_STRING_B, 
                              nt,
                              usn,
-                             ICK_NOTIFICATION_ALIVE,
+                             ICK_NOTIFICATION_BYEBYE,
                              upnp_bootid,
                              upnp_configid);
                     free(usn);
@@ -1150,7 +1150,7 @@ static char * _ick_notification_create (enum _ick_send_cmd cmd, struct _upnp_ser
                     asprintf(&result, ICK_NOTIFICATION_STRING_B, 
                              nt,
                              nt,
-                             ICK_NOTIFICATION_ALIVE,
+                             ICK_NOTIFICATION_BYEBYE,
                              upnp_bootid,
                              upnp_configid);
                     free(nt);
@@ -1168,7 +1168,7 @@ static char * _ick_notification_create (enum _ick_send_cmd cmd, struct _upnp_ser
                     asprintf(&result, ICK_NOTIFICATION_STRING_B, 
                              nt,
                              usn,
-                             ICK_NOTIFICATION_ALIVE,
+                             ICK_NOTIFICATION_BYEBYE,
                              upnp_bootid,
                              upnp_configid);
                     if (!device) {

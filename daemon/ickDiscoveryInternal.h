@@ -23,9 +23,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <stdbool.h>
 #include <sys/queue.h>
 #include <ctype.h>
-#include <stdbool.h>
 
 #include "libwebsockets.h"
 

@@ -529,6 +529,7 @@ static void * __ickP2PServiceThread(void * dummy) {
         libwebsocket_callback_on_writable_all_protocol(&(__protocols[ICK_PROTOCOL_P2PJSON]));
         usleep(ICK_SLEEP_INTERVAL);
     }
+    __quit_thread = 0;
     if (_ick_p2pDiscovery->exitCallback)
         _ick_p2pDiscovery->exitCallback();
     return NULL;
