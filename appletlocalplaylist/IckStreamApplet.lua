@@ -136,13 +136,16 @@ function _initializeSocket(self)
 									if (updateType == "UPD" or updateType == "ADD") and (services == "4" or services == "5" or services == "6") then
 										Timer(1000,
 											function() 
-												local id = self.serviceInformationRequestId
-												self.serviceInformationRequestId = self.serviceInformationRequestId + 1
-												self.serviceInformationRequests[id] = deviceId
-												self:_sendJsonRpcRequest(deviceId,"2.0",id,"getServiceInformation",nil)
+												self:_getServiceInformation(deviceId);
 											end,
 											true
 											):start()
+									elseif (updateType == "DEL") then
+										for i,existingDeviceId in pairs(self.serviceInformationRequests) do
+											if existingDeviceId == deviceId then
+												self.serviceInformationRequests[tonumber(i)] = nil
+											end
+										end
 									end
 								else 
 									log:warn("Unknown message type");
@@ -190,6 +193,31 @@ function _initializeSocket(self)
 						self.socket:t_removeWrite()
 					end,
 					10)
+end
+
+function _getServiceInformation(self, deviceId)
+	local id = self.serviceInformationRequestId
+	local alreadySent = false
+	for i,existingDeviceId in pairs(self.serviceInformationRequests) do
+		if deviceId == existingDeviceId then
+			alreadySent = true
+		end
+	end
+	if not alreadySent then
+		self.serviceInformationRequestId = self.serviceInformationRequestId + 1
+		self.serviceInformationRequests[id] = deviceId
+		self:_sendJsonRpcRequest(deviceId,"2.0",id,"getServiceInformation",nil)
+		Timer(15000,
+			function() 
+				if self.serviceInformationRequests[tonumber(id)] and self.localServices[self.serviceInformationRequests[tonumber(id)]] == nil then
+					local deviceId = self.serviceInformationRequests[tonumber(id)]
+					self.serviceInformationRequests[tonumber(id)] = nil
+					self:_getServiceInformation(deviceId);
+				end
+			end,
+			true
+			):start()
+	end
 end
 
 function _getCurrentIpAddress(self)
