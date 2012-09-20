@@ -11,8 +11,6 @@
 //
 
 #include <sys/utsname.h>
-#include <sys/unistd.h>
-#include <sys/fcntl.h>
 
 #include "ickDiscovery.h"
 #include "ickDiscoveryInternal.h"
