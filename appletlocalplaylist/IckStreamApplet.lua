@@ -334,7 +334,11 @@ function _handleJSONRPCResponse(self, deviceId, json)
 			self.serviceInformationRequests[tonumber(json.id)] = nil
 		end
 	else
-		log:warn("JSON-RPC Response with error: "..json.error.code..": "..json.error.message.."\n"..json.error.data)
+		if json.error.data then
+			log:warn("JSON-RPC Response with error: "..json.error.code..": "..json.error.message.."\n"..json.error.data)
+		else
+			log:warn("JSON-RPC Response with error: "..json.error.code..": "..json.error.message)
+		end
 	end
 end
 
