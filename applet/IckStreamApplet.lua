@@ -301,7 +301,7 @@ function _updateIpAddressInCloud(self)
 	local accessToken = self:getSettings()["accessToken"]
 	if accessToken then
 		local ipAddress = self:_getCurrentIpAddress()
-		local http = SocketHttp(jnt, "ickstream.isaksson.info", 80)
+		local http = SocketHttp(jnt, "api.ickstream.com", 80)
 		local req = RequestHttp(function(chunk, err)
 				if err then
 					log:warn(err)
