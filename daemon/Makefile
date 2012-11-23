@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -g -rdynamic -DLWS_NO_FORK
+CFLAGS=-Wall -g -rdynamic -DLWS_NO_FORK -DGIT_VERSION=$(ickstream.ickp2pVersion)
 LDFLAGS=-g -rdynamic -Wl -lpthread
 INTERNALINCLUDES=-I$(CURDIR)/../ickp2p/ickP2P/C/P2P -I$(CURDIR)/../ickp2p/miniupnp/minissdpd -I$(CURDIR)/../ickp2p/miniupnp/miniupnpc -I$(CURDIR)/../ickp2p/libwebsockets/lib -I$(CURDIR)/../ickp2p/jansson/src
 JANSSONINCLUDES=-I$(CURDIR)/../ickp2p/jansson/src
