@@ -9,8 +9,7 @@
                         <title lang="EN">ickStream</title>
                         <desc lang="EN">ickStream Player for Squeezebox making it possible to use Squeezebox as an ickStream player
 			</desc>
-                        <creator>Erland Isaksson</creator>
-                        <email>erland@isaksson.info</email>
+                        <creator>ickStream GmbH</creator>
                         <url>http://erland.isaksson.info/ickstream/IckStreamSqueezebox-0.1.1342352103.zip</url>
                 </applet>
         </applets>

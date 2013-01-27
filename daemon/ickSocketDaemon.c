@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 Erland Isaksson (erland@isaksson.info)
+ * Copyright (C) 2013 ickStream GmbH
  * All rights reserved.
  */
 
