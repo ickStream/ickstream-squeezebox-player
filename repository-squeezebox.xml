@@ -5,12 +5,12 @@
                 <title lang="EN">ickStream for Squeezebox (Development versions)</title>
         </details>
         <applets>
-                <applet name="IckStream" version="0.1.1342352103" minTarget="7.6" maxTarget="*">
+                <applet name="IckStream" version="BUILDVERSION" minTarget="7.6" maxTarget="*">
                         <title lang="EN">ickStream</title>
                         <desc lang="EN">ickStream Player for Squeezebox making it possible to use Squeezebox as an ickStream player
 			</desc>
                         <creator>ickStream GmbH</creator>
-                        <url>http://erland.isaksson.info/ickstream/IckStreamSqueezebox-0.1.1342352103.zip</url>
+                        <url>http://downloads.ickstream.com/squeezebox/IckStreamSqueezebox-BUILDVERSION.zip</url>
                 </applet>
         </applets>
 </extensions>
