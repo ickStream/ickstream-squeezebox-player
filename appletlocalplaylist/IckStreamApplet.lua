@@ -844,12 +844,18 @@ function _moveTracks(self,params,sink)
 			elseif item.playlistPos == modifiedIndex then
 			
 				local movedItem = table.remove(modifiedPlaylist,item.playlistPos + 1)
-				if wantedIndex < #modifiedPlaylist then
-					table.insert(modifiedPlaylist, wantedIndex + 1, movedItem)
+				if wantedIndex < #modifiedPlaylist + 1 then
+					if wantedIndex > item.playlistPos then
+						table.insert(modifiedPlaylist, wantedIndex, movedItem)
+						modifiedIndex = wantedIndex - 1
+					else
+						table.insert(modifiedPlaylist, wantedIndex + 1, movedItem)
+						modifiedIndex = wantedIndex 
+					end
 				else
 					table.insert(modifiedPlaylist, movedItem)
+					modifiedIndex = wantedIndex - 1
 				end
-				modifiedIndex = wantedIndex
 				if wantedIndex < item.playlistPos then
 					wantedIndex = wantedIndex + 1
 				end
