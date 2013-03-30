@@ -40,6 +40,7 @@ local jsonfilters = require("jive.utils.jsonfilters")
 local ltn12            = require("ltn12")
 local RequestHttp = require("jive.net.RequestHttp")
 local jsonfilters = require("jive.utils.jsonfilters")
+local math = require("math")
 
 local appletManager    = appletManager
 local jiveMain         = jiveMain
@@ -64,6 +65,10 @@ function init(self)
 	self.localServices = {}
 	self.serviceInformationRequests = {}
 	self.serviceInformationRequestId = 1
+	if not self:getSettings()["repeatMode"] then
+		self:getSettings()["repeatMode"] = "REPEAT_OFF"
+	end
+
 	os.execute("chmod +x ".._getAppletDir().."IckStream/ickSocketDaemon")
 	if log:isDebug() then
 		os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon > /var/log/ickstream.log 2>&1 &")
@@ -359,6 +364,14 @@ function _handleJSONRPCRequest(self, deviceId, json)
 		self:_setPlaylistName(json.params,function(result,err)
 			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
 		end)
+	elseif json.method == 'setRepeatMode' then
+		self:_setRepeatMode(json.params,function(result,err)
+			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+		end)
+	elseif json.method == 'shuffleTracks' then
+		self:_shuffleTracks(json.params,function(result,err)
+			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+		end)
 	elseif json.method == 'getPlaylist' then
 		self:_getPlaylist(json.params,function(result,err)
 			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
@@ -605,6 +618,15 @@ function _getPlayerConfiguration(self,params,sink)
 	end
 end
 
+function _setRepeatMode(self,params,sink)
+	if params.repeatMode then
+		self:getSettings()["repeatMode"] = params.repeatMode
+	end
+	local result = {}
+	result.repeatMode = self:getSettings()["repeatMode"]
+	sink(result);
+end
+
 function _getPlayerStatus(self,params,sink)
 	local player = Player:getLocalPlayer()
 	if player then
@@ -628,6 +650,7 @@ function _getPlayerStatus(self,params,sink)
 			result.track = self.playlistTracks[self.playlistIndex + 1]
 		end
 		result.lastChanged = self.playerStatusTimestamp
+		result.repeatMode = self:getSettings()["repeatMode"]
 		sink(result)
 	else
 		sink(undef,{
@@ -661,6 +684,36 @@ function _getPlaylist(self,params,sink)
 	end
 	result.count = #result.items
 	sink(result)
+end
+
+function _shuffleTable(t)
+        math.randomseed(os.time())
+        local iterations = #t
+        local j
+        for i = iterations, 2, -1 do
+                j = math.random(i)
+                t[i], t[j] = t[j], t[i]
+        end
+end
+
+function _shuffleTracks(self,params,sink)
+	if self.playlistTracks and #self.playlistTracks>1 then
+	
+		local item = table.remove(self.playlistTracks,self.playlistIndex+1)
+		_shuffleTable(self.playlistTracks)
+		table.insert(self.playlistTracks,1,item)
+		self:_updatePlaylistTimestamp()
+		
+		self.playlistIndex = 0
+		self:_updatePlayerStatusTimestamp()
+		self:_sendPlayerStatusChangedNotification()
+		self:_sendPlaylistChangedNotification()
+	end
+
+	sink({
+		result = true,
+		playlistPos = self.playlistIndex
+	})
 end
 
 function _addTracks(self,params,sink)
