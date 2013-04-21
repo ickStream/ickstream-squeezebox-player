@@ -41,7 +41,7 @@ int g_clientSocket = 0;
 int g_serverSocket = 0;
 static pthread_mutex_t g_receiveMutex = PTHREAD_MUTEX_INITIALIZER;
 
-void onMessage(const char * szDeviceId, const void * message, size_t messageLength, enum ickMessage_communicationstate state)
+void onMessage(const char * szSourceDeviceId, const char * message, size_t messageLength, enum ickMessage_communicationstate state, ickDeviceServicetype_t service_type, const char * szTargetDeviceId)
 {
 	char MESSAGE[] = "MESSAGE\n";
 	char END[] = "\n!END!\n";
@@ -49,20 +49,20 @@ void onMessage(const char * szDeviceId, const void * message, size_t messageLeng
 	printf("onMessage called\n");
 	fflush (stdout);
 	pthread_mutex_lock(&g_receiveMutex);
-	printf("Message from %s: %s\n", szDeviceId,(const char *)message);
+	printf("Message from %s: %s\n", szSourceDeviceId,(const char *)message);
 	fflush (stdout);
 	if(g_clientSocket != 0) {
-		size_t messageBufferSize = strlen(szDeviceId)+messageLength+strlen(MESSAGE)+1+strlen(END);
-		size_t deviceIdLength = strlen(szDeviceId);
+		size_t messageBufferSize = strlen(szSourceDeviceId)+messageLength+strlen(MESSAGE)+1+strlen(END);
+		size_t deviceIdLength = strlen(szSourceDeviceId);
 		char* messageBuffer = malloc(messageBufferSize+1);
-		memcpy(messageBuffer,szDeviceId,deviceIdLength);
+		memcpy(messageBuffer,szSourceDeviceId,deviceIdLength);
 		messageBuffer[deviceIdLength] = '\n';
 		memcpy(messageBuffer+deviceIdLength+1,MESSAGE,strlen(MESSAGE));
 		memcpy(messageBuffer+deviceIdLength+1+strlen(MESSAGE),message,messageLength);
 		memcpy(messageBuffer+deviceIdLength+1+strlen(MESSAGE)+messageLength,END,strlen(END));
 		messageBuffer[deviceIdLength+1+strlen(MESSAGE)+messageLength+strlen(END)]='\0';
 		if(send(g_clientSocket,messageBuffer,messageBufferSize,0) != messageBufferSize) {
-			fprintf(stderr, "Failed to write message from %s to socket: %s\n",szDeviceId,(const char*)messageBuffer);
+			fprintf(stderr, "Failed to write message from %s to socket: %s\n",szSourceDeviceId,(const char*)messageBuffer);
 			fflush (stderr);
 		}
 		free(messageBuffer);
