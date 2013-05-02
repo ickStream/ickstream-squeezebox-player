@@ -232,9 +232,15 @@ void handleInitialization(int socketfd, char* message) {
     g_clientSocket = socketfd;
     ickDeviceRegisterMessageCallback(&onMessage);
     ickDeviceRegisterDeviceCallback(&onDevice);
-    ickInitDiscovery(deviceId, networkAddress,NULL);
-    ickDiscoverySetupConfigurationData(deviceName, NULL);
-    ickDiscoveryAddService(ICKDEVICE_PLAYER);
+    printf("ickInitDiscovery(\"%s\",\"%s\",NULL)\n",deviceId, networkAddress);
+    ickDiscoveryResult_t result = ickInitDiscovery(deviceId, networkAddress,NULL);
+    printf("ickInitDiscovery = %d\n",result);
+    printf("ickDiscoverySetupConfigurationData(\"%s\",NULL)\n",deviceName);
+    result = ickDiscoverySetupConfigurationData(deviceName, NULL);
+    printf("ickDiscoverySetupConfigurationData = %d\n",result);
+    printf("ickDiscoveryAddService(ICKDEVICE_PLAYER)\n");
+    result = ickDiscoveryAddService(ICKDEVICE_PLAYER);
+    printf("ickDiscoveryAddService = %d\n",result);
 	fflush (stdout);
 }
 
