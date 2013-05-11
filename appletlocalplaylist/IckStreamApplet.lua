@@ -42,6 +42,7 @@ local RequestHttp = require("jive.net.RequestHttp")
 local jsonfilters = require("jive.utils.jsonfilters")
 local math = require("math")
 local url       = require("socket.url")
+local http = require("socket.http")
 
 local appletManager    = appletManager
 local jiveMain         = jiveMain
@@ -491,8 +492,21 @@ function _playCurrentTrack(self, sink)
 			end
 			if streamingUrl then
 				if intermediate then
-					log:warn("Intermediate url not supported: "..streamingUrl)
-					sink(false)
+					if self:getSettings()["accessToken"] then
+						local body, code, headers, status = http.request {
+							url = streamingUrl,
+	  						headers = { Authorization = "Bearer " .. self:getSettings()["accessToken"] },
+	  						redirect = false
+						}
+						if (code == 301 or code == 302) and headers["location"] then
+							self:_playUrl(headers["location"],sink)
+						else 
+							log:warn("Unable to get redirected url for: "..streamingUrl..", Error: "..code)
+							sink(false)
+						end
+					else
+						log:warn("No access token found, player must be registered for this stream")
+					end
 				else 
 					self:_playUrl(streamingUrl,sink)
 				end
