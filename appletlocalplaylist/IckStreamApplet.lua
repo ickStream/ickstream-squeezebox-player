@@ -662,6 +662,7 @@ end
 
 function _setPlaylistName(self,params,sink)
 	self.playlistName = params.playlistName
+	self.playlistId = params.playlistId
 	sink({
 		playlistId = self.playlistId,
 		playlistName = self.playlistName,
@@ -677,7 +678,7 @@ function _getPlaylist(self,params,sink)
 	result.offset = offset
 	result.countAll = #self.playlistTracks
 	result.items = {}
-	while offset<#self.playlistTracks do
+	while offset<#self.playlistTracks and (count==nil or #result.items<count) do
 		result.items[i] = self.playlistTracks[offset+1]
 		i = i + 1
 		offset = offset + 1
@@ -936,6 +937,9 @@ function _setTracks(self,params,sink)
 	self.playlistId = params.playlistId
 	self.playlistName = params.playlistName
 	self.playlistTracks = params.items
+	if self.playlistTracks == nil then
+		self.playlistTracks = {}
+	end
 	
 	local playlistPos = params.playlistPos or 0
 	if #self.playlistTracks > 0 and playlistPos < #params.items then
