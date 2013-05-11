@@ -683,6 +683,7 @@ function _getPlayerStatus(self,params,sink)
 			result.muted = true
 			result.volumeLevel = -player:getVolume()/100
 		else
+			result.muted = false
 			result.volumeLevel = player:getVolume()/100
 		end
 		local elapsed,duration = player:getTrackElapsed()
