@@ -41,6 +41,7 @@ local ltn12            = require("ltn12")
 local RequestHttp = require("jive.net.RequestHttp")
 local jsonfilters = require("jive.utils.jsonfilters")
 local math = require("math")
+local url       = require("socket.url")
 
 local appletManager    = appletManager
 local jiveMain         = jiveMain
@@ -55,10 +56,16 @@ oo.class(_M, Applet)
 --
 
 function init(self)
-	self.playlistTracks = {}
-	self.playlistIndex = nil
-	self.playlistId = nil
-	self.playlistName = nil
+	self.playlistTracks = self:getSettings()["playlistTracks"]
+	self.playlistIndex = self:getSettings()["playlistIndex"]
+	if not self.playlistTracks then
+		self.playlistTracks = {}
+	end
+	if self.playlistIndex and #self.playlistTracks<self.playlistIndex then
+		self.playlistIndex = nil
+	end
+	self.playlistId = self:getSettings()["playlistId"] or nil
+	self.playlistName = self:getSettings()["playlistName"] or nil
 	self.playerStatusTimestamp = os.time()
 	self.playlistTimestamp = os.time()
 	self.volumeChangedTimer = nil
@@ -67,6 +74,7 @@ function init(self)
 	self.serviceInformationRequestId = 1
 	if not self:getSettings()["repeatMode"] then
 		self:getSettings()["repeatMode"] = "REPEAT_OFF"
+		self:storeSettings()
 	end
 
 	os.execute("chmod +x ".._getAppletDir().."IckStream/ickSocketDaemon")
@@ -444,6 +452,8 @@ function _updatePlaylistTimestamp(self)
 		timestamp = timestamp + 1
 	end
 	self.playlistTimestamp = timestamp
+	-- self:getSettings()["playlistTracks"] = self.playlistTracks
+	-- self:storeSettings()
 end
 
 function _updatePlayerStatusTimestamp(self)
@@ -452,6 +462,8 @@ function _updatePlayerStatusTimestamp(self)
 		timestamp = timestamp + 1
 	end
 	self.playerStatusTimestamp = timestamp
+	-- self:getSettings()["playlistIndex"] = self.playlistIndex
+	-- self:storeSettings()
 end
 
 function _playCurrentTrack(self, sink)
@@ -459,7 +471,11 @@ function _playCurrentTrack(self, sink)
 	if player and player:getSlimServer() and player:getSlimServer():isConnected() then
 			local currentTrack = self.playlistTracks[self.playlistIndex + 1];
 			local streamingUrl = nil
+			local intermediate = false
 			if currentTrack and currentTrack.streamingRefs and currentTrack.streamingRefs[1] then
+				if currentTrack.streamingRefs[1].intermediate then
+					intermediate = currentTrack.streamingRefs[1].intermediate
+				end
 				if string.sub(currentTrack.streamingRefs[1].url,1,10) == "service://" then
 					local startPos,endPos,text = string.find(currentTrack.streamingRefs[1].url,'service://([^/]*)')
 					if text and self.localServices[text] then
@@ -474,25 +490,35 @@ function _playCurrentTrack(self, sink)
 				end
 			end
 			if streamingUrl then
-				log:info("Playing "..streamingUrl)
-				player:getSlimServer():userRequest(function(chunk,err)
-						if err then
-							sink(false)
-						else
-							self:_updatePlayerStatusTimestamp()
-							self:_sendPlayerStatusChangedNotification()
-							sink(true)
-						end
-					end,
-					player and player:getId(),
-					{'playlist','play',streamingUrl}
-				)
+				if intermediate then
+					log:warn("Intermediate url not supported: "..streamingUrl)
+					sink(false)
+				else 
+					self:_playUrl(streamingUrl,sink)
+				end
 			else
 				sink(false)
 			end
 	else
 		sink(false)
 	end	
+end
+
+function _playUrl(self, streamingUrl,sink)
+	log:info("Playing "..streamingUrl)
+	local player = Player:getLocalPlayer()
+	player:getSlimServer():userRequest(function(chunk,err)
+			if err then
+				sink(false)
+			else
+				self:_updatePlayerStatusTimestamp()
+				self:_sendPlayerStatusChangedNotification()
+				sink(true)
+			end
+		end,
+		player and player:getId(),
+		{'playlist','play',streamingUrl}
+	)
 end
 
 function _updateIpAddressInCloud(self)
@@ -524,7 +550,7 @@ function _updateIpAddressInCloud(self)
 						}
 					}),
 				headers = {
-					Authorization = 'OAuth '..accessToken
+					Authorization = 'Bearer '..accessToken
 				}
 			})
 			http:fetch(req)
@@ -570,6 +596,7 @@ end
 function _setPlayerConfiguration(self,params,sink)
 	if params.accessToken then
 		self:getSettings()["accessToken"] = params.accessToken
+		self:storeSettings()
 		self:_updateIpAddressInCloud()
 	end
 	if params.playerName then
@@ -621,6 +648,7 @@ end
 function _setRepeatMode(self,params,sink)
 	if params.repeatMode then
 		self:getSettings()["repeatMode"] = params.repeatMode
+		self:storeSettings()
 	end
 	local result = {}
 	result.repeatMode = self:getSettings()["repeatMode"]
