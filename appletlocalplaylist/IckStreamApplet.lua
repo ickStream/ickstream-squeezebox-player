@@ -73,8 +73,8 @@ function init(self)
 	self.localServices = {}
 	self.serviceInformationRequests = {}
 	self.serviceInformationRequestId = 1
-	if not self:getSettings()["repeatMode"] then
-		self:getSettings()["repeatMode"] = "REPEAT_OFF"
+	if not self:getSettings()["playbackQueueMode"] then
+		self:getSettings()["playbackQueueMode"] = "QUEUE"
 		self:storeSettings()
 	end
 
@@ -373,16 +373,16 @@ function _handleJSONRPCRequest(self, deviceId, json)
 		self:_setPlaylistName(json.params,function(result,err)
 			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
 		end)
-	elseif json.method == 'setRepeatMode' then
-		self:_setRepeatMode(json.params,function(result,err)
+	elseif json.method == 'setPlaybackQueueMode' then
+		self:_setPlaybackQueueMode(json.params,function(result,err)
 			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'shuffleTracks' then
 		self:_shuffleTracks(json.params,function(result,err)
 			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
 		end)
-	elseif json.method == 'getPlaylist' then
-		self:_getPlaylist(json.params,function(result,err)
+	elseif json.method == 'getPlaybackQueue' then
+		self:_getPlaybackQueue(json.params,function(result,err)
 			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'addTracks' then
@@ -447,7 +447,7 @@ end
 
 -- Below this line follows the implementation of all ickStream Player Protocol methods
 
-function _updatePlaylistTimestamp(self)
+function _updatePlaybackQueueTimestamp(self)
 	local timestamp = os.time()
 	if self.playlistTimestamp == timestamp then
 		timestamp = timestamp + 1
@@ -594,7 +594,7 @@ function _sendPlayerStatusChangedNotification(self)
 	end)
 end
 
-function _sendPlaylistChangedNotification(self)
+function _sendPlaybackQueueChangedNotification(self)
 	local params = {}
 	if self.playlistId ~= nil then
 		params.playlistId = self.playlistId
@@ -604,7 +604,7 @@ function _sendPlaylistChangedNotification(self)
 	end
 	params.countAll = #self.playlistTracks
 	params.lastChanged = self.playlistTimestamp
-	self:_sendJsonRpcRequest(nil, "2.0", nil, 'playlistChanged', params)
+	self:_sendJsonRpcRequest(nil, "2.0", nil, 'playbackQueueChanged', params)
 end
 
 function _setPlayerConfiguration(self,params,sink)
@@ -659,13 +659,13 @@ function _getPlayerConfiguration(self,params,sink)
 	end
 end
 
-function _setRepeatMode(self,params,sink)
-	if params.repeatMode then
-		self:getSettings()["repeatMode"] = params.repeatMode
+function _setPlaybackQueueMode(self,params,sink)
+	if params.playbackQueueMode then
+		self:getSettings()["playbackQueueMode"] = params.playbackQueueMode
 		self:storeSettings()
 	end
 	local result = {}
-	result.repeatMode = self:getSettings()["repeatMode"]
+	result.playbackQueueMode = self:getSettings()["playbackQueueMode"]
 	sink(result);
 end
 
@@ -689,11 +689,11 @@ function _getPlayerStatus(self,params,sink)
 		local elapsed,duration = player:getTrackElapsed()
 		result.seekPos = elapsed
 		if self.playlistIndex ~= nil and #self.playlistTracks>0 then
-			result.playlistPos = self.playlistIndex
+			result.playbackQueuePos = self.playlistIndex
 			result.track = self.playlistTracks[self.playlistIndex + 1]
 		end
 		result.lastChanged = self.playerStatusTimestamp
-		result.repeatMode = self:getSettings()["repeatMode"]
+		result.playbackQueueMode = self:getSettings()["playbackQueueMode"]
 		sink(result)
 	else
 		sink(undef,{
@@ -713,7 +713,7 @@ function _setPlaylistName(self,params,sink)
 	})
 end
 
-function _getPlaylist(self,params,sink)
+function _getPlaybackQueue(self,params,sink)
 	local offset = params.offset or 0
 	local count = params.count
 	local result = {}
@@ -746,38 +746,38 @@ function _shuffleTracks(self,params,sink)
 		local item = table.remove(self.playlistTracks,self.playlistIndex+1)
 		_shuffleTable(self.playlistTracks)
 		table.insert(self.playlistTracks,1,item)
-		self:_updatePlaylistTimestamp()
+		self:_updatePlaybackQueueTimestamp()
 		
 		self.playlistIndex = 0
 		self:_updatePlayerStatusTimestamp()
 		self:_sendPlayerStatusChangedNotification()
-		self:_sendPlaylistChangedNotification()
+		self:_sendPlaybackQueueChangedNotification()
 	end
 
 	sink({
 		result = true,
-		playlistPos = self.playlistIndex
+		playbackQueuePos = self.playlistIndex
 	})
 end
 
 function _addTracks(self,params,sink)
-	if params.playlistPos ~= nil and params.playlistPos < #self.playlistTracks then
-		self:_updatePlaylistTimestamp()
+	if params.playbackQueuePos ~= nil and params.playbackQueuePos < #self.playlistTracks then
+		self:_updatePlaybackQueueTimestamp()
 		-- Add in middle
-		local i = params.playlistPos + 1
+		local i = params.playbackQueuePos + 1
 		for _,item in ipairs(params.items) do
 			table.insert(self.playlistTracks, i, item)
 			i = i + 1
 		end
 		
 		-- Modify playlist position if it was after the inserted tracks
-		if self.playlistIndex ~= nil and self.playlistIndex>=params.playlistPos then
+		if self.playlistIndex ~= nil and self.playlistIndex>=params.playbackQueuePos then
 			self.playlistIndex = self.playlistIndex + #params.items
 			self:_updatePlayerStatusTimestamp()
 			self:_sendPlayerStatusChangedNotification()
 		end
 	else
-		self:_updatePlaylistTimestamp()
+		self:_updatePlaybackQueueTimestamp()
 		-- Add at end
 		for _,item in ipairs(params.items) do
 			table.insert(self.playlistTracks,item)
@@ -791,11 +791,11 @@ function _addTracks(self,params,sink)
 		end
 		
 	end
-	self:_sendPlaylistChangedNotification()
+	self:_sendPlaybackQueueChangedNotification()
 
 	sink({
 		result = true,
-		playlistPos = self.playlistIndex
+		playbackQueuePos = self.playlistIndex
 	})
 end
 
@@ -808,16 +808,16 @@ function _removeTracks(self,params,sink)
 	local affectsPlayback = false
 	
 	for _,item in ipairs(params.items) do
-		if item.playlistPos ~= nil then
+		if item.playbackQueuePos ~= nil then
 			-- If specific position has been specified
-			local previousItem = self.playlistTracks[item.playlistPos + 1]
+			local previousItem = self.playlistTracks[item.playbackQueuePos + 1]
 			if previousItem and previousItem.id == item.id then
-				if item.playlistPos < self.playlistIndex then
+				if item.playbackQueuePos < self.playlistIndex then
 					modifiedIndex = modifiedIndex - 1
-				elseif item.playlistPos == self.playlistIndex then
+				elseif item.playbackQueuePos == self.playlistIndex then
 					affectsPlayback = true
 				end
-				table.remove(modifiedPlaylist,item.playlistPos + 1)
+				table.remove(modifiedPlaylist,item.playbackQueuePos + 1)
 			else
 				sink(undef, {
 					code = -32602,
@@ -874,11 +874,11 @@ function _removeTracks(self,params,sink)
 		end
 	end
 	
-	self:_sendPlaylistChangedNotification()
+	self:_sendPlaybackQueueChangedNotification()
 
 	sink({
 		result = true,
-		playlistPos = self.playlistIndex
+		playbackQueuePos = self.playlistIndex
 	})
 end
 				
@@ -890,17 +890,17 @@ function _moveTracks(self,params,sink)
 	end
 	local modifiedIndex = self.playlistIndex
 	local affectsPlayback = false
-	local wantedIndex = params.playlistPos or #self.playlistTracks
+	local wantedIndex = params.playbackQueuePos or #self.playlistTracks
 	
 	for _,item in ipairs(params.items) do
-		if item.playlistPos ~= nil then
+		if item.playbackQueuePos ~= nil then
 			-- Move that doesn't affect playlist position
-			if (wantedIndex<=modifiedIndex and item.playlistPos<modifiedIndex) or
-				(wantedIndex>modifiedIndex and item.playlistPos>modifiedIndex) then
+			if (wantedIndex<=modifiedIndex and item.playbackQueuePos<modifiedIndex) or
+				(wantedIndex>modifiedIndex and item.playbackQueuePos>modifiedIndex) then
 			
-				local movedItem = table.remove(modifiedPlaylist,item.playlistPos + 1)
+				local movedItem = table.remove(modifiedPlaylist,item.playbackQueuePos + 1)
 				local offset = 0
-				if wantedIndex >= item.playlistPos then
+				if wantedIndex >= item.playbackQueuePos then
 					offset = -1
 				end
 				
@@ -910,24 +910,24 @@ function _moveTracks(self,params,sink)
 					table.insert(modifiedPlaylist, movedItem)
 				end
 				
-				if wantedIndex < item.playlistPos then
+				if wantedIndex < item.playbackQueuePos then
 					wantedIndex = wantedIndex + 1
 				end
 				
 			-- Move that increase playlist position
-			elseif wantedIndex<=modifiedIndex and item.playlistPos>modifiedIndex then
+			elseif wantedIndex<=modifiedIndex and item.playbackQueuePos>modifiedIndex then
 
-				local movedItem = table.remove(modifiedPlaylist,item.playlistPos + 1)
+				local movedItem = table.remove(modifiedPlaylist,item.playbackQueuePos + 1)
 				table.insert(modifiedPlaylist, wantedIndex + 1, movedItem)
 				modifiedIndex = modifiedIndex + 1
 				wantedIndex = wantedIndex + 1
 				
 			-- Move that decrease playlist position
-			elseif wantedIndex>modifiedIndex and item.playlistPos<modifiedIndex then
+			elseif wantedIndex>modifiedIndex and item.playbackQueuePos<modifiedIndex then
 			
-				local movedItem = table.remove(modifiedPlaylist,item.playlistPos + 1)
+				local movedItem = table.remove(modifiedPlaylist,item.playbackQueuePos + 1)
 				local offset = 0
-				if wantedIndex >= item.playlistPos then
+				if wantedIndex >= item.playbackQueuePos then
 					offset = -1
 				end
 				if wantedIndex + offset < #modifiedPlaylist then
@@ -938,11 +938,11 @@ function _moveTracks(self,params,sink)
 				modifiedIndex = modifiedIndex - 1
 								
 			-- Move of currently playing track
-			elseif item.playlistPos == modifiedIndex then
+			elseif item.playbackQueuePos == modifiedIndex then
 			
-				local movedItem = table.remove(modifiedPlaylist,item.playlistPos + 1)
+				local movedItem = table.remove(modifiedPlaylist,item.playbackQueuePos + 1)
 				if wantedIndex < #modifiedPlaylist + 1 then
-					if wantedIndex > item.playlistPos then
+					if wantedIndex > item.playbackQueuePos then
 						table.insert(modifiedPlaylist, wantedIndex, movedItem)
 						modifiedIndex = wantedIndex - 1
 					else
@@ -953,7 +953,7 @@ function _moveTracks(self,params,sink)
 					table.insert(modifiedPlaylist, movedItem)
 					modifiedIndex = wantedIndex - 1
 				end
-				if wantedIndex < item.playlistPos then
+				if wantedIndex < item.playbackQueuePos then
 					wantedIndex = wantedIndex + 1
 				end
 				
@@ -967,12 +967,12 @@ function _moveTracks(self,params,sink)
 		self:_updatePlayerStatusTimestamp()
 		self:_sendPlayerStatusChangedNotification()
 	end
-	self:_updatePlaylistTimestamp()
-	self:_sendPlaylistChangedNotification()
+	self:_updatePlaybackQueueTimestamp()
+	self:_sendPlaybackQueueChangedNotification()
 		
 	sink({
 		result = true,
-		playlistPos = self.playlistIndex
+		playbackQueuePos = self.playlistIndex
 	})
 end
 
@@ -984,10 +984,10 @@ function _setTracks(self,params,sink)
 		self.playlistTracks = {}
 	end
 	
-	local playlistPos = params.playlistPos or 0
-	if #self.playlistTracks > 0 and playlistPos < #params.items then
+	local playbackQueuePos = params.playbackQueuePos or 0
+	if #self.playlistTracks > 0 and playbackQueuePos < #params.items then
 		self:_setTrack({
-			playlistPos = playlistPos
+			playbackQueuePos = playbackQueuePos
 		},function(result,err)
 		end)
 	else
@@ -1000,11 +1000,11 @@ function _setTracks(self,params,sink)
 		end)
 	end
 	
-	self:_sendPlaylistChangedNotification()
+	self:_sendPlaybackQueueChangedNotification()
 
 	sink({
 		result = true,
-		playlistPos = self.playlistIndex
+		playbackQueuePos = self.playlistIndex
 	})
 end
 
@@ -1080,10 +1080,10 @@ function _getSeekPosition(self,params,sink)
 	local player = Player:getLocalPlayer()
 	if player then
 		local result = {}
-		local playlistPos = self.playlistIndex
-		if playlistPos ~= nil then
+		local playbackQueuePos = self.playlistIndex
+		if playbackQueuePos ~= nil then
 			local elapsed,duration = player:getTrackElapsed()
-			result.playlistPos = playlistPos
+			result.playbackQueuePos = playbackQueuePos
 			result.seekPos = elapsed
 		end
 		sink(result)
@@ -1107,11 +1107,11 @@ function _getTrack(self,params,sink)
 	if self.playlistName ~= nil then
 		result['playlistName'] = self.playlistName
 	end
-	if params.playlistPos ~= nil and params.playlistPos < #self.playlistTracks then
-		result['playlistPos'] = params.playlistPos
-		result['track'] = self.playlistTracks[params.playlistPos + 1]
-	elseif params.playlistPos == nil and self.playlistIndex ~= nil then
-		result['playlistPos'] = self.playlistIndex
+	if params.playbackQueuePos ~= nil and params.playbackQueuePos < #self.playlistTracks then
+		result['playbackQueuePos'] = params.playbackQueuePos
+		result['track'] = self.playlistTracks[params.playbackQueuePos + 1]
+	elseif params.playbackQueuePos == nil and self.playlistIndex ~= nil then
+		result['playbackQueuePos'] = self.playlistIndex
 		result['track'] = self.playlistTracks[self.playlistIndex + 1]
 	end
 	sink(result)
@@ -1120,8 +1120,8 @@ end
 function _setTrack(self,params,sink)
 	local player = Player:getLocalPlayer()
 	if player and player:getSlimServer() and player:getSlimServer():isConnected() then
-		if params.playlistPos ~= nil and params.playlistPos < #self.playlistTracks then
-			self.playlistIndex = params.playlistPos
+		if params.playbackQueuePos ~= nil and params.playbackQueuePos < #self.playlistTracks then
+			self.playlistIndex = params.playbackQueuePos
 			self:_updatePlayerStatusTimestamp()
 			-- TODO: set SeekPos = 0
 			if player:getPlayerMode() == 'play' then
@@ -1133,12 +1133,12 @@ function _setTrack(self,params,sink)
 				self:_sendPlayerStatusChangedNotification()
 			end
 			sink({
-				playlistPos = self.playlistIndex
+				playbackQueuePos = self.playlistIndex
 			})
 		else
 			sink(undef,{
 				code = -32602,
-				message = 'Invalid playlistPos specified'
+				message = 'Invalid playbackQueuePos specified'
 			})
 		end
 	else
@@ -1150,49 +1150,49 @@ function _setTrack(self,params,sink)
 end
 
 function _setTrackMetadata(self,params,sink)
-	if params.playlistPos ~= nil then
-		if params.playlistPos < #self.playlistTracks then
-			if params.track and params.track.id==self.playlistTracks[params.playlistPos + 1].id then
+	if params.playbackQueuePos ~= nil then
+		if params.playbackQueuePos < #self.playlistTracks then
+			if params.track and params.track.id==self.playlistTracks[params.playbackQueuePos + 1].id then
 				if params.replace then
-					self.playlistTracks[params.playlistPos + 1] = params.track
-					self:_updatePlaylistTimestamp()
+					self.playlistTracks[params.playbackQueuePos + 1] = params.track
+					self:_updatePlaybackQueueTimestamp()
 				else
 					if params.track.image ~= nil then
-						self.playlistTracks[params.playlistPos + 1].image = params.track.image
-						self:_updatePlaylistTimestamp()
+						self.playlistTracks[params.playbackQueuePos + 1].image = params.track.image
+						self:_updatePlaybackQueueTimestamp()
 					end
 					if params.track.text ~= nil then
-						self.playlistTracks[params.playlistPos + 1].text = params.track.text
-						self:_updatePlaylistTimestamp()
+						self.playlistTracks[params.playbackQueuePos + 1].text = params.track.text
+						self:_updatePlaybackQueueTimestamp()
 					end
 					if params.track.type ~= nil then
-						self.playlistTracks[params.playlistPos + 1].type = params.track.type
-						self:_updatePlaylistTimestamp()
+						self.playlistTracks[params.playbackQueuePos + 1].type = params.track.type
+						self:_updatePlaybackQueueTimestamp()
 					end
 					if params.track.streamingRefs ~= nil then
-						self.playlistTracks[params.playlistPos + 1].streamingRefs = params.track.streamingRefs
-						self:_updatePlaylistTimestamp()
+						self.playlistTracks[params.playbackQueuePos + 1].streamingRefs = params.track.streamingRefs
+						self:_updatePlaybackQueueTimestamp()
 					end
 					-- TODO: Copying of itemAttributes
 				end
-				if self.playlistIndex ~= nil and self.playlistIndex == params.playlistPos then
+				if self.playlistIndex ~= nil and self.playlistIndex == params.playbackQueuePos then
 					self:_updatePlayerStatusTimestamp()
 					self:_sendPlayerStatusChangedNotification()
 				end
-				self:_sendPlaylistChangedNotification()
+				self:_sendPlaybackQueueChangedNotification()
 				sink({
-					track = self.playlistTracks[params.playlistPos + 1]
+					track = self.playlistTracks[params.playbackQueuePos + 1]
 				})
 			else
 				sink(undef,{
 					code = -32602,
-					message = 'Invalid playlistPos and track.id combination'
+					message = 'Invalid playbackQueuePos and track.id combination'
 				})
 			end
 		else
 			sink(undef,{
 				code = -32602,
-				message = 'Invalid playlistPos'
+				message = 'Invalid playbackQueuePos'
 			})
 		end
 	else
@@ -1202,33 +1202,33 @@ function _setTrackMetadata(self,params,sink)
 				lastModified = k
 				if params.replace then
 					self.playlistTracks[k] = params.track
-					self:_updatePlaylistTimestamp()
+					self:_updatePlaybackQueueTimestamp()
 				else
 					if params.track.image ~= nil then
 						self.playlistTracks[k].image = params.track.image
-						self:_updatePlaylistTimestamp()
+						self:_updatePlaybqckQueueTimestamp()
 					end
 					if params.track.text ~= nil then
 						self.playlistTracks[k].text = params.track.text
-						self:_updatePlaylistTimestamp()
+						self:_updatePlaybackQueueTimestamp()
 					end
 					if params.track.type ~= nil then
 						self.playlistTracks[k].type = params.track.type
-						self:_updatePlaylistTimestamp()
+						self:_updatePlaybackQueueTimestamp()
 					end
 					if params.track.streamingRefs ~= nil then
 						self.playlistTracks[k].streamingRefs = params.track.streamingRefs
-						self:_updatePlaylistTimestamp()
+						self:_updatePlaybackQueueTimestamp()
 					end
 					-- TODO: Copying of itemAttributes
 				end
-				if self.playlistIndex ~= nil and self.playlistIndex == params.playlistPos then
+				if self.playlistIndex ~= nil and self.playlistIndex == params.playbackQueuePos then
 					self:_updatePlayerStatusTimestamp()
 					self:_sendPlayerStatusChangedNotification()
 				end
 			end
 		end
-		self:_sendPlaylistChangedNotification()
+		self:_sendPlaybackQueueChangedNotification()
 		if lastModified ~= nil then
 			sink({
 				track = self.playlistTracks[lastModified]
