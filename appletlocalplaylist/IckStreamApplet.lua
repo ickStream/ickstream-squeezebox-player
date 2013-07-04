@@ -365,6 +365,10 @@ function _handleJSONRPCRequest(self, deviceId, json)
 		self:_getPlayerConfiguration(json.params,function(result,err)
 			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
 		end)
+	elseif json.method == 'getProtocolVersions' then
+		self:_getProtocolVersions(json.params,function(result,err)
+			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+		end)
 	elseif json.method == 'getPlayerStatus' then
 		self:_getPlayerStatus(json.params,function(result,err)
 			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
@@ -657,6 +661,13 @@ function _getPlayerConfiguration(self,params,sink)
 			message = 'Player data not available'
 		})
 	end
+end
+
+function _getProtocolVersions(self,params,sink)
+	local result = {}
+	result.minVersion = "1.0"
+	result.maxVersion = "1.0"
+	sink(result);
 end
 
 function _setPlaybackQueueMode(self,params,sink)
