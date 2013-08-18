@@ -43,6 +43,9 @@ local jsonfilters = require("jive.utils.jsonfilters")
 local math = require("math")
 local url       = require("socket.url")
 local http = require("socket.http")
+local Window           = require("jive.ui.Window")
+local SimpleMenu       = require("jive.ui.SimpleMenu")
+
 
 local appletManager    = appletManager
 local jiveMain         = jiveMain
@@ -71,6 +74,7 @@ function init(self)
 	self.playlistTimestamp = os.time()
 	self.volumeChangedTimer = nil
 	self.localServices = {}
+	self.localServiceNames = {}
 	self.serviceInformationRequests = {}
 	self.serviceInformationRequestId = 1
 	if not self:getSettings()["playbackQueueMode"] then
@@ -209,6 +213,87 @@ function _initializeSocket(self)
 					10)
 end
 
+function openMenu(self,transition)
+	local window = Window("text_list",self:string("ICKSTREAM"), 'settingstitle')
+	local menu = SimpleMenu("menu")
+	
+	if self:getSettings()["accessToken"] then
+		menu:addItem( {
+			text = self:string('ICKSTREAM_REGISTERED'), 
+			iconStyle = 'item_info',
+			weight = 2
+		})
+	else
+		menu:addItem( {
+			text = self:string('ICKSTREAM_NOT_REGISTERED'), 
+			iconStyle = 'item_info',
+			weight = 2
+		})
+	end
+	for i,existingDeviceId in pairs(self.serviceInformationRequests) do
+		local name = existingDeviceId
+		if self.localServiceNames[existingDeviceId] then
+			name = self.localServiceNames[existingDeviceId]
+		end
+		menu:addItem({
+			text = name, 
+			sound = "WINDOWSHOW",
+			callback = function(event, menuItem)
+				self:openServer(existingDeviceId,transition)
+				return EVENT_CONSUME
+			end
+		})
+	end
+	for existingDeviceId,url in pairs(self.localServices) do
+		local name = existingDeviceId
+		if self.localServiceNames[existingDeviceId] then
+			name = self.localServiceNames[existingDeviceId]
+		end
+		menu:addItem({
+			text = name, 
+			sound = "WINDOWSHOW",
+			callback = function(event, menuItem)
+				self:openServer(menuItem.text,existingDeviceId,transition)
+				return EVENT_CONSUME
+			end
+		})
+	end
+	window:addWidget(menu)
+	self:tieAndShowWindow(window)
+end
+
+function openServer(self,name, deviceId,transition)
+	local window = Window("text_list",name, 'settingstitle')
+	local menu = SimpleMenu("menu")
+	if self.localServices[deviceId] ~= nil then
+		menu:addItem( {
+			text = self:string('ICKSTREAM_SERVER_AVAILABLE'), 
+			iconStyle = 'item_info',
+			weight = 2
+		})
+		menu:addItem( {
+			text = self.localServices[deviceId], 
+			iconStyle = 'item_info',
+			weight = 3
+		})
+	else
+		menu:addItem( {
+			text = self:string('ICKSTREAM_SERVER_UNAVAILABLE'), 
+			iconStyle = 'item_info',
+			weight = 2
+		})
+		window:addTimer(1000,
+			function() 
+				self:_getServiceInformation(deviceId)
+				window:hide(Window.transitionNone)
+				window=nil
+				self:openServer(name,deviceId,Window.transitionNone)
+			end)
+	end
+	window:addWidget(menu)
+	self:tieAndShowWindow(window,transition)
+end
+
 function _getServiceInformation(self, deviceId)
 	local id = self.serviceInformationRequestId
 	local alreadySent = false
@@ -345,6 +430,7 @@ function _handleJSONRPCResponse(self, deviceId, json)
 		if json.id and self.serviceInformationRequests[tonumber(json.id)] then
 			log:info("Storing serviceUrl of "..self.serviceInformationRequests[tonumber(json.id)].."="..json.result.serviceUrl)
 			self.localServices[self.serviceInformationRequests[tonumber(json.id)]] = json.result.serviceUrl
+			self.localServiceNames[self.serviceInformationRequests[tonumber(json.id)]] = json.result.name
 			self.serviceInformationRequests[tonumber(json.id)] = nil
 		end
 	else
@@ -547,21 +633,21 @@ function _playUrl(self, streamingUrl,sink)
 					player and player:getId(),
 					{'playlistcontrol','cmd:load','track_id:'..track_id}
 				)
+				return;
 			end
-	else 
-		player:getSlimServer():userRequest(function(chunk,err)
-				if err then
-					sink(false)
-				else
-					self:_updatePlayerStatusTimestamp()
-					self:_sendPlayerStatusChangedNotification()
-					sink(true)
-				end
-			end,
-			player and player:getId(),
-			{'playlist','play',streamingUrl}
-		)
 	end
+	player:getSlimServer():userRequest(function(chunk,err)
+			if err then
+				sink(false)
+			else
+				self:_updatePlayerStatusTimestamp()
+				self:_sendPlayerStatusChangedNotification()
+				sink(true)
+			end
+		end,
+		player and player:getId(),
+		{'playlist','play',streamingUrl}
+	)
 end
 
 function _updateIpAddressInCloud(self)
