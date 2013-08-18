@@ -525,18 +525,43 @@ end
 function _playUrl(self, streamingUrl,sink)
 	log:info("Playing "..streamingUrl)
 	local player = Player:getLocalPlayer()
-	player:getSlimServer():userRequest(function(chunk,err)
-			if err then
-				sink(false)
-			else
-				self:_updatePlayerStatusTimestamp()
-				self:_sendPlayerStatusChangedNotification()
-				sink(true)
+	local ip, port = player:getSlimServer():getIpPort();
+	if string.find(streamingUrl,ip) then
+			local body, code, headers, status = http.request {
+				url = streamingUrl,
+				redirect = false
+			}
+			if (code == 301 or code == 302) and headers["location"] and string.match(headers["location"], '/%d+/') then
+				local track_id = string.match(headers["location"], '/%d+/');
+				track_id = string.match(track_id,"%d+");
+				
+				player:getSlimServer():userRequest(function(chunk,err)
+						if err then
+							sink(false)
+						else
+							self:_updatePlayerStatusTimestamp()
+							self:_sendPlayerStatusChangedNotification()
+							sink(true)
+						end
+					end,
+					player and player:getId(),
+					{'playlistcontrol','cmd:load','track_id:'..track_id}
+				)
 			end
-		end,
-		player and player:getId(),
-		{'playlist','play',streamingUrl}
-	)
+	else 
+		player:getSlimServer():userRequest(function(chunk,err)
+				if err then
+					sink(false)
+				else
+					self:_updatePlayerStatusTimestamp()
+					self:_sendPlayerStatusChangedNotification()
+					sink(true)
+				end
+			end,
+			player and player:getId(),
+			{'playlist','play',streamingUrl}
+		)
+	end
 end
 
 function _updateIpAddressInCloud(self)
