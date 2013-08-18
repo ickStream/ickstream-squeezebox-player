@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -72,6 +73,9 @@ void onMessage(const char * szSourceDeviceId, const char * message, size_t messa
 
 void onDevice(const char * szDeviceId, enum ickDiscovery_command change, enum ickDevice_servicetype type)
 {
+	if(g_clientSocket == 0) {
+		return;
+	}
 	char DEVICE[] = "DEVICE\n";
 	char ADD[] = "ADD\n";
 	char DEL[] = "DEL\n";
@@ -289,6 +293,18 @@ static void* client_thread(void *arg) {
 	return 0;
 }
 
+static void shutdownHandler( int sig, siginfo_t *siginfo, void *context )
+{
+	switch( sig) {
+		case SIGINT:
+		case SIGTERM:
+			shutdown(g_serverSocket, 2);
+		break;
+		default:
+			break;
+	}
+}
+
 int main( int argc, const char* argv[] )
 {
 	struct hostent     *he;
@@ -305,6 +321,13 @@ int main( int argc, const char* argv[] )
 	memcpy(&addr.sin_addr, he->h_addr_list[0], he->h_length);
 	socklen_t addr_len = sizeof(addr);
 	
+    struct sigaction act;
+    memset( &act, 0, sizeof(act) );
+    act.sa_sigaction = &shutdownHandler;
+    act.sa_flags     = SA_SIGINFO;
+    sigaction( SIGINT, &act, NULL );
+    sigaction( SIGTERM, &act, NULL );
+
 	g_serverSocket = socket(AF_INET, SOCK_STREAM, 0);
 	int opt = 1;
 	setsockopt(g_serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(int));
@@ -327,14 +350,17 @@ int main( int argc, const char* argv[] )
         pthread_t handle;
         pthread_create(&handle, NULL, client_thread, client_socket);
     }
-    close(g_serverSocket);
+	close(g_serverSocket);
+	g_serverSocket = 0;
 
 	if(g_clientSocket != 0) {
 		close(g_clientSocket);
+		g_clientSocket = 0;
 	}
 	printf("Shutting down ickP2P...\n");
 	fflush (stdout);
 	ickEndDiscovery(1);
+	printf("Shutdown of ickP2P completed\n");
 	fflush (stdout);
 	return 0;
 }	
