@@ -663,7 +663,7 @@ function _updateIpAddressInCloud(self)
 					if chunk.error then
 						log:warn("Unable to register IP address in cloud: "..chunk.error.code..": "..chunk.error.message)
 					else
-						log:debug("Successfully updated device access in cloud")
+						log:info("Successfully updated device access in cloud")
 					end
 				end
 			end,
@@ -723,11 +723,97 @@ function _sendPlaybackQueueChangedNotification(self)
 end
 
 function _setPlayerConfiguration(self,params,sink)
+	if params.cloudCoreUrl ~= nil and ((self:getSettings()["cloudCoreUrl"] == nil and params.cloudCoreUrl ~= 'http://api.ickstream.com/ickstream-cloud-core/jsonrpc') or params.cloudCoreUrl ~= self:getSettings()["cloudCoreUrl"]) then
+		local parsedUrl = url.parse(params.cloudCoreUrl)
+		if parsedUrl ~= nil then
+			self:getSettings()["cloudCoreUrl"] = params.cloudCoreUrl
+			self:getSettings()["accessToken"] = nil
+			self:storeSettings()
+		else
+			sink(undef,{
+				code = -32602,
+				message = 'Invalid parameter cloudCoreUrl='..params.cloudCoreUrl
+			})
+			return
+		end
+	end
 	if params.accessToken then
 		self:getSettings()["accessToken"] = params.accessToken
 		self:storeSettings()
 		self:_updateIpAddressInCloud()
 	end
+	self:_setPlayerConfigurationDeviceRegistrationToken(params,sink);
+end
+
+function _setPlayerConfigurationDeviceRegistrationToken(self,params,sink)
+	if params.deviceRegistrationToken then
+		local cloudCoreUrl = self:getSettings()["cloudCoreUrl"]
+		if cloudCoreUrl == nil then
+			cloudCoreUrl = 'http://api.ickstream.com/ickstream-cloud-core/jsonrpc'
+		end
+
+		local parsedUrl = url.parse(cloudCoreUrl)
+		if parsedUrl.port == nil then
+			parsedUrl.port = 80
+		end
+		
+		local ipAddress = self:_getCurrentIpAddress()
+
+		local hardwareId = self:_getHardwareId()
+
+		log:info("Using Cloud Core Service: host: "..parsedUrl.host)
+		log:info("Using Cloud Core Service port: "..parsedUrl.port)
+		log:info("Using Cloud Core Service path: "..parsedUrl.path)
+		local http = SocketHttp(jnt, parsedUrl.host, parsedUrl.port)
+		local req = RequestHttp(function(chunk, err)
+				if err then
+					log:warn(err)
+					sink(undef,{
+						code = -32001,
+						message = 'Unable to register device in cloud: '..err
+					})
+				elseif chunk then
+					chunk = json.decode(chunk)
+					if chunk.error or chunk.result.accessToken == nil then
+						self:getSettings()["accessToken"] = nil
+						self:storeSettings()
+						log:warn("Unable to register device in cloud: "..chunk.error.code..": "..chunk.error.message)
+						sink(undef,{
+							code = -32001,
+							message = 'Unable to register device in cloud'
+						})
+					else
+						self:getSettings()["accessToken"] = chunk.result.accessToken
+						self:storeSettings()
+						log:info("Successfully registered device in cloud")
+						self:_setPlayerConfigurationName(params,sink)
+					end
+				end
+			end,
+			'POST', parsedUrl.path,
+			{
+				t_bodySource = _getBodySource(
+					{
+						jsonrpc = "2.0",
+						id = 1,
+						method = "addDevice",
+						params = {
+							applicationId = 'C5589EF9-9C28-4556-942A-765E698215F1',
+							hardwareId = hardwareId,
+							address = ipAddress
+						}
+					}),
+				headers = {
+					Authorization = 'Bearer '..params.deviceRegistrationToken
+				}
+			})
+			http:fetch(req)
+	else
+		self:_setPlayerConfigurationName(params,sink)
+	end
+end
+
+function _setPlayerConfigurationName(self,params,sink)
 	if params.playerName then
 		local player = Player:getLocalPlayer()
 		if player and player:getSlimServer() and player:getSlimServer():isConnected() then
@@ -756,15 +842,21 @@ function _setPlayerConfiguration(self,params,sink)
 	end
 end
 
+function _getHardwareId(self)
+	local hardwareId = System:getUUID()
+	if hardwareId == nil then
+		hardwareId = "BAE283E2-B79B-40B7-A32A-"..string.upper(string.gsub(System.getMacAddress(),":",""))
+	end
+	return hardwareId
+end
+
 function _getPlayerConfiguration(self,params,sink)
 	local player = Player:getLocalPlayer()
 	if player then
 		local result = {}
 		result.playerName = player:getName()
 		result.playerModel = "Squeezebox"
-		if System:getUUID() then
-			result.hardwareId = System:getUUID()
-		end
+		result.hardwareId = self:_getHardwareId()
 		sink(result);
 	else 
 		sink(undef,{
