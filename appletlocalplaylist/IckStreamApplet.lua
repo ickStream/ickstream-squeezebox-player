@@ -108,7 +108,51 @@ end
 
 function notify_networkConnected(self)
 	-- TODO: Handle network connected
-	log:warn("Network connected")
+	log:debug("Network connected")
+end
+
+function notify_playerModeChange(self, player, mode)
+	if Player:getLocalPlayer():getId() == player:getId() then
+		if player:isPowerOn() then
+			if mode == 'stop' then
+				if self.playlistIndex ~= nil and self.playlistIndex<#self.playlistTracks-1 then
+					log:debug("Switching to next track")
+					self.playlistIndex = self.playlistIndex + 1
+					self:_playCurrentTrack(function(success)
+							if success then
+								log:debug("Successfully switch to next track")
+							else
+								log:warn("Failed to switch to next track")
+							end
+						end)
+				elseif self.playlistIndex ~= nil and #self.playlistTracks>0 and (self:getSettings()["playbackQueueMode"] == 'QUEUE_REPEAT' or self:getSettings()["playbackQueueMode"] == 'QUEUE_REPEAT_SHUFFLE') then
+					log:debug("Restarting playlist")
+					if self:getSettings()["playbackQueueMode"] == 'QUEUE_REPEAT_SHUFFLE' then
+						log:debug("Shuffle before restarting")
+						_shuffleTable(self.playlistTracks)
+						self:_updatePlaybackQueueTimestamp()
+						self:_sendPlaybackQueueChangedNotification()
+					end
+					self.playlistIndex = 0
+					self:_playCurrentTrack(function(success)
+							if success then
+								log:debug("Successfully switch to next track")
+							else
+								log:debug("Failed to switch to next track")
+							end
+						end)
+				else
+					log:debug("Reached end of playlist")
+					self:_updatePlayerStatusTimestamp()
+					self:_sendPlayerStatusChangedNotification()
+				end
+			else
+				log:debug("Ignoring mode change to: "..mode)
+			end
+		end
+	else
+		log:debug("Ignoring mode change for "..player:getId().." to "..mode)
+	end
 end
 
 function _initializeSocket(self)
@@ -135,7 +179,7 @@ function _initializeSocket(self)
 							   local messageType = string.sub(message,i+1,j-1)
 							   if messageType == "MESSAGE" then
 								   local jsonData = json.decode(string.sub(message,j+1))
-								   log:info("GOT MESSAGE (from "..deviceId.."): ".. string.sub(message,j+1))
+								   log:debug("GOT MESSAGE (from "..deviceId.."): ".. string.sub(message,j+1))
 								   if jsonData then
 								   		if jsonData.method then
 									   		if not jsonData.params then
@@ -150,7 +194,7 @@ function _initializeSocket(self)
 									local k = string.find(message,"\n",j+1);
 									local services = string.sub(message,j+1,k-1)
 									local updateType = string.sub(message,k+1,k+3)
-									log:info("GOT DEVICE (from "..deviceId.."): updateType="..updateType..", services="..services)
+									log:debug("GOT DEVICE (from "..deviceId.."): updateType="..updateType..", services="..services)
 									if (updateType == "UPD" or updateType == "ADD") and (services == "4" or services == "5" or services == "6") then
 										Timer(1000,
 											function() 
@@ -384,7 +428,7 @@ function _sendJsonRpcResponse(self, deviceId, version, id, result, err)
 						sock:close()
 						return
 					end
-					log:warn("Writing to "..deviceId..": "..jsonString)
+					log:debug("Writing to "..deviceId..": "..jsonString)
 					socket.t_sock:send("MESSAGE\n"..deviceId.."\n"..jsonString.."\0")
 					socket:t_removeWrite()
 					socket:close()
@@ -416,7 +460,7 @@ function _sendJsonRpcRequest(self, deviceId, version, id, method, params)
 						sock:close()
 						return
 					end
-					log:warn("Writing to "..deviceId..": "..jsonString)
+					log:debug("Writing to "..deviceId..": "..jsonString)
 					socket.t_sock:send("MESSAGE\n"..deviceId.."\n"..jsonString.."\0")
 					socket:t_removeWrite()
 					socket:close()
@@ -570,9 +614,9 @@ function _playCurrentTrack(self, sink)
 				if string.sub(currentTrack.streamingRefs[1].url,1,10) == "service://" then
 					local startPos,endPos,text = string.find(currentTrack.streamingRefs[1].url,'service://([^/]*)')
 					if text and self.localServices[text] then
-						log:warn("Replacing: "..currentTrack.streamingRefs[1].url.."\nWith: "..self.localServices[text])
+						log:debug("Replacing: "..currentTrack.streamingRefs[1].url.."\nWith: "..self.localServices[text])
 						streamingUrl = string.gsub(currentTrack.streamingRefs[1].url,"service://[^/]*",self.localServices[text])
-						log:warn("Resulting in: "..streamingUrl)
+						log:debug("Resulting in: "..streamingUrl)
 					else
 						log:warn("Can't resolve "..text)
 					end
@@ -609,7 +653,7 @@ function _playCurrentTrack(self, sink)
 end
 
 function _playUrl(self, streamingUrl,sink)
-	log:info("Playing "..streamingUrl)
+	log:debug("Playing "..streamingUrl)
 	local player = Player:getLocalPlayer()
 	local ip, port = player:getSlimServer():getIpPort();
 	if string.find(streamingUrl,ip) then
