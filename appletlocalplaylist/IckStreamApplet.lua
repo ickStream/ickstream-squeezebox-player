@@ -45,6 +45,7 @@ local url       = require("socket.url")
 local http = require("socket.http")
 local Window           = require("jive.ui.Window")
 local SimpleMenu       = require("jive.ui.SimpleMenu")
+local dumper           = require("jive.utils.dumper")
 
 
 local appletManager    = appletManager
@@ -60,8 +61,19 @@ oo.class(_M, Applet)
 --
 
 function init(self)
-	self.playlistTracks = self:getSettings()["playlistTracks"]
-	self.playlistIndex = self:getSettings()["playlistIndex"]
+	self.playlistStorage = System.getUserDir().."/settings/IckStream_playlist.json"
+	log:info("Open file "..self.playlistStorage)
+	local fh = io.open(self.playlistStorage, "r")
+	if fh then
+		log:info("Reading from "..self.playlistStorage)
+		local content = fh:read("*all")
+		self.playlistTracks = json.decode(content)
+		fh:close()
+		self.playlistIndex = self:getSettings()["playlistIndex"]
+	else 
+		self.playlistTracks = nil
+		self.playlistIndex = nil
+	end
 	if not self.playlistTracks then
 		self.playlistTracks = {}
 	end
@@ -156,6 +168,7 @@ function notify_playerModeChange(self, player, mode)
 end
 
 function _initializeSocket(self)
+	self.previousMessagePart = nil
 	self.socket = SocketTcp(jnt, "127.0.0.1", 20530, "ickstream")
 	self.socket:t_connect();
 	self.socket:t_addRead(function()
@@ -165,12 +178,19 @@ function _initializeSocket(self)
 						   log:error(err)
 						   self.socket:t_removeRead()
 					   else
-					       local nextMsg = string.find((chunk or partial), "\n!END!\n");
+					   	   local completeMessage
+					   	   if self.previousMessagePart then
+					   	   		completeMessage = self.previousMessagePart .. (chunk or partial)
+					   	   else
+					   	   		completeMessage = (chunk or partial)
+					   	   end
+					       local nextMsg = string.find(completeMessage, "\n!END!\n");
 					       local message
 					       if nextMsg ~= nil then
-					           message = string.sub((chunk or partial),0,nextMsg)
+					           message = string.sub(completeMessage,0,nextMsg)
+					           self.previousMessagePart = nil
 					       else
-					           message = string.sub((chunk or partial),0)
+					           self.previousMessagePart = string.sub(completeMessage,0)
 					       end
 					       while message ~= nil and string.len(message)>0 do
 							   local i = string.find(message, "\n", 0)  
@@ -214,11 +234,13 @@ function _initializeSocket(self)
 								end
 								
 								if nextMsg ~= nil then
-									local terminator = string.find((chunk or partial),"\n!END!\n",nextMsg+7)
+									local terminator = string.find(completeMessage,"\n!END!\n",nextMsg+7)
 									if terminator ~= nil then
-										message = string.sub((chunk or partial),nextMsg+7,terminator)
+										message = string.sub(completeMessage,nextMsg+7,terminator)
+										self.previousMessagePart = nil
 									else
-										message = string.sub((chunk or partial),nextMsg+7)
+										message = nil
+										self.previousMessagePart = string.sub(completeMessage,nextMsg+7)
 									end
 									nextMsg=terminator
 								else
@@ -429,7 +451,19 @@ function _sendJsonRpcResponse(self, deviceId, version, id, result, err)
 						return
 					end
 					log:debug("Writing to "..deviceId..": "..jsonString)
-					socket.t_sock:send("MESSAGE\n"..deviceId.."\n"..jsonString.."\0")
+					local message = "MESSAGE\n"..deviceId.."\n"..jsonString.."\0"
+					local sent = 0
+					local err
+					local lastSent
+					sent,err,lastSent = socket.t_sock:send(message)
+					while sent==nil and lastSent<string.len(message) do
+						log:debug(err..", sending additional chunk starting with byte: "..lastSent)
+						local additional_sent
+						sent,err,additional_sent = socket.t_sock:send(string.sub(message,lastSent))
+						if sent == nil then
+							lastSent = lastSent + additional_sent
+						end
+					end
 					socket:t_removeWrite()
 					socket:close()
 				end,
@@ -587,8 +621,13 @@ function _updatePlaybackQueueTimestamp(self)
 		timestamp = timestamp + 1
 	end
 	self.playlistTimestamp = timestamp
-	-- self:getSettings()["playlistTracks"] = self.playlistTracks
-	-- self:storeSettings()
+	log:info("Open file "..self.playlistStorage)
+	local fh = io.open(self.playlistStorage, "w")
+	if fh then
+		log:info("Writing to "..self.playlistStorage)
+		fh:write(json.encode(self.playlistTracks))
+		fh:close()
+	end
 end
 
 function _updatePlayerStatusTimestamp(self)
@@ -597,8 +636,8 @@ function _updatePlayerStatusTimestamp(self)
 		timestamp = timestamp + 1
 	end
 	self.playerStatusTimestamp = timestamp
-	-- self:getSettings()["playlistIndex"] = self.playlistIndex
-	-- self:storeSettings()
+	self:getSettings()["playlistIndex"] = self.playlistIndex
+	self:storeSettings()
 end
 
 function _playCurrentTrack(self, sink)
@@ -1258,6 +1297,7 @@ function _setTracks(self,params,sink)
 		end)
 	end
 	
+	self:_updatePlaybackQueueTimestamp()
 	self:_sendPlaybackQueueChangedNotification()
 
 	sink({
