@@ -301,14 +301,44 @@ function openMenu(self,transition)
 		if self.localServiceNames[existingDeviceId] then
 			name = self.localServiceNames[existingDeviceId]
 		end
-		menu:addItem({
-			text = name, 
-			sound = "WINDOWSHOW",
-			callback = function(event, menuItem)
-				self:openServer(existingDeviceId,transition)
-				return EVENT_CONSUME
+		if self.localServices[existingDeviceId] then
+			menu:addItem({
+				text = name, 
+				sound = "WINDOWSHOW",
+				callback = function(event, menuItem)
+					self:openServer(menuItem.text,existingDeviceId,transition)
+					return EVENT_CONSUME
+				end
+			})
+		elseif not self:getSettings()["localServices"] and not self:getSettings()["localServices"][existingDeviceId] then
+			name = "Waiting: "..name
+			menu:addItem({
+				text = name, 
+				sound = "WINDOWSHOW",
+				callback = function(event, menuItem)
+					self:openServer(menuItem.text,existingDeviceId,transition)
+					return EVENT_CONSUME
+				end
+			})
+		end
+	end
+	if self:getSettings()["localServices"] then
+		for existingDeviceId,url in pairs(self:getSettings()["localServices"]) do
+			if not self.localServices[existingDeviceId] then
+				local name = "Cached: "..existingDeviceId
+				if self.localServiceNames[existingDeviceId] then
+					name = "Cached: "..self.localServiceNames[existingDeviceId]
+				end
+				menu:addItem({
+					text = name, 
+					sound = "WINDOWSHOW",
+					callback = function(event, menuItem)
+						self:openServer(menuItem.text,existingDeviceId,transition)
+						return EVENT_CONSUME
+					end
+				})
 			end
-		})
+		end
 	end
 	for existingDeviceId,url in pairs(self.localServices) do
 		local name = existingDeviceId
@@ -348,6 +378,13 @@ function openServer(self,name, deviceId,transition)
 			iconStyle = 'item_info',
 			weight = 2
 		})
+		if self:getSettings()["localServices"] and self:getSettings()["localServices"][deviceId] then
+			menu:addItem( {
+				text = self:getSettings()["localServices"][deviceId], 
+				iconStyle = 'item_info',
+				weight = 3
+			})
+		end
 		window:addTimer(1000,
 			function() 
 				self:_getServiceInformation(deviceId)
@@ -508,8 +545,13 @@ function _handleJSONRPCResponse(self, deviceId, json)
 		if json.id and self.serviceInformationRequests[tonumber(json.id)] then
 			log:info("Storing serviceUrl of "..self.serviceInformationRequests[tonumber(json.id)].."="..json.result.serviceUrl)
 			self.localServices[self.serviceInformationRequests[tonumber(json.id)]] = json.result.serviceUrl
+			if not self:getSettings()["localServices"] then
+				self:getSettings()["localServices"] = {}
+			end
+			self:getSettings()["localServices"][self.serviceInformationRequests[tonumber(json.id)]] = json.result.serviceUrl
 			self.localServiceNames[self.serviceInformationRequests[tonumber(json.id)]] = json.result.name
 			self.serviceInformationRequests[tonumber(json.id)] = nil
+			self:storeSettings()
 		end
 	else
 		if json.error.data then
@@ -655,6 +697,10 @@ function _playCurrentTrack(self, sink)
 					if text and self.localServices[text] then
 						log:debug("Replacing: "..currentTrack.streamingRefs[1].url.."\nWith: "..self.localServices[text])
 						streamingUrl = string.gsub(currentTrack.streamingRefs[1].url,"service://[^/]*",self.localServices[text])
+						log:debug("Resulting in: "..streamingUrl)
+					elseif text and self:getSettings()["localServices"] and self:getSettings()["localServices"][text] then
+						log:debug("Replacing: "..currentTrack.streamingRefs[1].url.."\nWith cached: "..self:getSettings()["localServices"][text])
+						streamingUrl = string.gsub(currentTrack.streamingRefs[1].url,"service://[^/]*",self:getSettings()["localServices"][text])
 						log:debug("Resulting in: "..streamingUrl)
 					else
 						log:warn("Can't resolve "..text)
