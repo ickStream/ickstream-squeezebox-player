@@ -86,6 +86,7 @@ function init(self)
 	self.playlistTimestamp = os.time()
 	self.volumeChangedTimer = nil
 	self.localServices = {}
+	self.cloudServices = {}
 	self.localServiceNames = {}
 	self.serviceInformationRequests = {}
 	self.serviceInformationRequestId = 1
@@ -708,6 +709,28 @@ function _playCurrentTrack(self, sink)
 				else
 					streamingUrl = currentTrack.streamingRefs[1].url
 				end
+			elseif currentTrack and not currentTrack.streamingRefs then
+				log:debug("No streaming references, we need to retrieve it from content service based on track: "..currentTrack.id)
+				local startPos,endPos,serviceId = string.find(currentTrack.id,'([^:]*):.*')
+				if serviceId and self.localServices[serviceId] then
+					-- TODO: Implement support for getItemStreamingRef for local services
+				elseif serviceId and self.cloudServices[serviceId] then
+					log:debug("Using previously retrieved content service: "..serviceId..": "..self.cloudServices[serviceId])
+					self:_getStreamingRefAndPlay(self.cloudServices[serviceId],currentTrack.id,sink)
+				elseif serviceId then
+					self:_refreshCloudContentServices(function (success) 
+						if self.cloudServices[serviceId] then
+							log:debug("Using retrieved content service: "..serviceId..": "..self.cloudServices[serviceId])
+							self:_getStreamingRefAndPlay(self.cloudServices[serviceId],currentTrack.id,sink)
+						else
+							sink(false)
+							return
+						end
+					end)
+				else
+					sink(false)
+					return
+				end
 			end
 			if streamingUrl then
 				if intermediate then
@@ -735,6 +758,54 @@ function _playCurrentTrack(self, sink)
 	else
 		sink(false)
 	end	
+end
+
+function _getStreamingRefAndPlay(self, serviceUrl, itemId, sink)
+	local accessToken = self:getSettings()["accessToken"]
+	if accessToken then
+		local parsedUrl = url.parse(serviceUrl)
+		if parsedUrl.port == nil then
+			parsedUrl.port = 80
+		end
+
+		log:debug("Retrieve streaming reference from "..parsedUrl.host..":"..parsedUrl.port..parsedUrl.path)
+		local http = SocketHttp(jnt, parsedUrl.host, parsedUrl.port)
+		local req = RequestHttp(function(chunk, err)
+				if err then
+					log:warn(err)
+				elseif chunk then
+					chunk = json.decode(chunk)
+					if chunk.error then
+						log:warn("Unable to retrieve streaming reference: "..chunk.error.code..": "..chunk.error.message)
+						sink(false)
+					elseif not chunk.result then
+						log:warn("Unable to retrieve streaming reference")
+						sink(false)
+					else
+						self:_playUrl(chunk.result.url,sink)
+					end
+				end
+			end,
+			'POST', parsedUrl.path,
+			{
+				t_bodySource = _getBodySource(
+					{
+						jsonrpc = "2.0",
+						id = 1,
+						method = "getItemStreamingRef",
+						params = {
+							itemId = itemId
+						}
+					}),
+				headers = {
+					Authorization = 'Bearer '..accessToken
+				}
+			})
+			http:fetch(req)
+	else
+		log:warn("No access token, can not retrieve streaming reference")
+		sink(false)
+	end
 end
 
 function _playUrl(self, streamingUrl,sink)
@@ -812,6 +883,59 @@ function _updateIpAddressInCloud(self)
 				}
 			})
 			http:fetch(req)
+	end
+end
+
+function _refreshCloudContentServices(self, sink)
+	local accessToken = self:getSettings()["accessToken"]
+	if accessToken then
+		local cloudCoreUrl = self:getSettings()["cloudCoreUrl"]
+		if cloudCoreUrl == nil then
+			cloudCoreUrl = 'http://api.ickstream.com/ickstream-cloud-core/jsonrpc'
+		end
+
+		local parsedUrl = url.parse(cloudCoreUrl)
+		if parsedUrl.port == nil then
+			parsedUrl.port = 80
+		end
+
+		log:debug("Retrieve available content services from "..parsedUrl.host..":"..parsedUrl.port..parsedUrl.path)
+		local http = SocketHttp(jnt, parsedUrl.host, parsedUrl.port)
+		local req = RequestHttp(function(chunk, err)
+				if err then
+					log:warn(err)
+				elseif chunk then
+					chunk = json.decode(chunk)
+					if chunk.error then
+						log:warn("Unable to retrieve content services from cloud: "..chunk.error.code..": "..chunk.error.message)
+					else
+						for _,item in ipairs(chunk.result.items) do
+							log:debug("Got "..item.id..": "..item.url)
+							self.cloudServices[item.id] = item.url
+						end
+						sink(true)
+					end
+				end
+			end,
+			'POST', parsedUrl.path,
+			{
+				t_bodySource = _getBodySource(
+					{
+						jsonrpc = "2.0",
+						id = 1,
+						method = "findServices",
+						params = {
+							type = 'content'
+						}
+					}),
+				headers = {
+					Authorization = 'Bearer '..accessToken
+				}
+			})
+			http:fetch(req)
+	else
+		log:warn("No access token, can not retrieve available content services")
+		sink(false)
 	end
 end
 
