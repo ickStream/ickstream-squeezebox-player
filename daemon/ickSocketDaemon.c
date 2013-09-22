@@ -36,18 +36,19 @@
 #include <unistd.h>
 #include <pthread.h>
 
-#include "ickDiscovery.h"
+#include "ickP2p.h"
 
 int g_clientSocket = 0;
 int g_serverSocket = 0;
 static pthread_mutex_t g_receiveMutex = PTHREAD_MUTEX_INITIALIZER;
+ickP2pContext_t* g_context = NULL;
 
-void onMessage(const char * szSourceDeviceId, const char * message, size_t messageLength, enum ickMessage_communicationstate state, ickDeviceServicetype_t service_type, const char * szTargetDeviceId)
+void messageCb(ickP2pContext_t *ictx, const char *szSourceDeviceId, ickP2pServicetype_t sourceService, ickP2pServicetype_t targetService, const char* message, size_t messageLength, ickP2pMessageFlag_t mFlags )
 {
 	char MESSAGE[] = "MESSAGE\n";
 	char END[] = "\n!END!\n";
 	
-	printf("onMessage called\n");
+	printf("messageCb called\n");
 	fflush (stdout);
 	pthread_mutex_lock(&g_receiveMutex);
 	printf("Message from %s: %s\n", szSourceDeviceId,(const char *)message);
@@ -71,7 +72,7 @@ void onMessage(const char * szSourceDeviceId, const char * message, size_t messa
 	pthread_mutex_unlock(&g_receiveMutex);
 }
 
-void onDevice(const char * szDeviceId, enum ickDiscovery_command change, enum ickDevice_servicetype type)
+void discoveryCb(ickP2pContext_t *ictx, const char *szDeviceId, ickP2pDeviceState_t change, ickP2pServicetype_t type)
 {
 	if(g_clientSocket == 0) {
 		return;
@@ -79,9 +80,8 @@ void onDevice(const char * szDeviceId, enum ickDiscovery_command change, enum ic
 	char DEVICE[] = "DEVICE\n";
 	char ADD[] = "ADD\n";
 	char DEL[] = "DEL\n";
-	char UPD[] = "UPD\n";
 	char END[] = "!END!\n";
-	printf("onDevice called\n");
+	printf("discoveryCb called\n");
 	fflush (stdout);
 	pthread_mutex_lock(&g_receiveMutex);
 
@@ -98,7 +98,7 @@ void onDevice(const char * szDeviceId, enum ickDiscovery_command change, enum ic
 
 	int nWritten = 0;
 	switch(change) {
-		case ICKDISCOVERY_ADD_DEVICE:
+		case ICKP2P_CONNECTED:
 			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2,ADD,strlen(ADD));
 			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2+strlen(ADD),END,strlen(END));
 			messageBuffer[deviceIdLength+1+strlen(DEVICE)+2+strlen(ADD)+strlen(END)]='\0';
@@ -110,23 +110,11 @@ void onDevice(const char * szDeviceId, enum ickDiscovery_command change, enum ic
 				}
 			}
 			break;
-		case ICKDISCOVERY_REMOVE_DEVICE:
+		case ICKP2P_DISCONNECTED:
 			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2,DEL,strlen(DEL));
 			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2+strlen(DEL),END,strlen(END));
 			messageBuffer[deviceIdLength+1+strlen(DEVICE)+2+strlen(DEL)+strlen(END)]='\0';
 			printf("Removed device %s\n",szDeviceId);
-			if(g_clientSocket != 0) {
-				if((nWritten = send(g_clientSocket,messageBuffer,messageBufferSize,0)) != messageBufferSize) {
-					fprintf(stderr, "Failed to write message from %s to socket: %s\nOnly wrote %d characters out of %d\n",szDeviceId,(const char*)messageBuffer,nWritten,messageBufferSize);
-					fflush (stderr);
-				}
-			}
-			break;
-		case ICKDISCOVERY_UPDATE_DEVICE:
-			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2,UPD,strlen(UPD));
-			memcpy(messageBuffer+deviceIdLength+1+strlen(DEVICE)+2+strlen(UPD),END,strlen(END));
-			messageBuffer[deviceIdLength+1+strlen(DEVICE)+2+strlen(UPD)+strlen(END)]='\0';
-			printf("Updated device %s of type %d\n",szDeviceId,type);
 			if(g_clientSocket != 0) {
 				if((nWritten = send(g_clientSocket,messageBuffer,messageBufferSize,0)) != messageBufferSize) {
 					fprintf(stderr, "Failed to write message from %s to socket: %s\nOnly wrote %d characters out of %d\n",szDeviceId,(const char*)messageBuffer,nWritten,messageBufferSize);
@@ -168,30 +156,15 @@ void handleMessage(char* message) {
 
 	if(strcmp(deviceId,"ALL")==0) {
 		printf("Sending notification %s\n",message);
-	    int i=0;
-	    while(i<10) {
-			if(ickDeviceSendMsg(NULL,message,strlen(message)) == ICKMESSAGE_SUCCESS) {
-	            break;
-	        }
-	        sleep(1);
-	        i++;
-	    }
-	    if(i==10) {
-	        printf("Failed to send notification\n");
+		ickErrcode_t result = ickP2pSendMsg(g_context, NULL, ICKP2P_SERVICE_ANY, ICKP2P_SERVICE_PLAYER, message,strlen(message));
+	    if(result != ICKERR_SUCCESS) {
+	        printf("Failed to send notification, error=%d\n",(int)result);
 	    }
 	}else {
 		printf("Sending message to %s: %s\n",deviceId, message);
-	    int i=0;
-	    while(i<10) {
-			if(ickDeviceSendMsg(deviceId,message,strlen(message)) == ICKMESSAGE_SUCCESS) {
-		        printf("Succeeded to send message after %d retries\n",i);
-	            break;
-	        }
-	        sleep(1);
-	        i++;
-	    }
-	    if(i==10) {
-	        printf("Failed to send message\n");
+		ickErrcode_t result = ickP2pSendMsg(g_context, deviceId,ICKP2P_SERVICE_CONTROLLER,ICKP2P_SERVICE_PLAYER,message,strlen(message));
+	    if(result != ICKERR_SUCCESS) {
+	        printf("Failed to send message, error=%d\n",(int)result);
 	    }
 	}
 	fflush (stdout);
@@ -232,19 +205,33 @@ void handleInitialization(int socketfd, char* message) {
 	}
 	deviceName[i] = '\0';
 
-	printf("Initializing ickP2P for %s(%s) at %s...\n",deviceName,deviceId,networkAddress);
     g_clientSocket = socketfd;
-    ickDeviceRegisterMessageCallback(&onMessage);
-    ickDeviceRegisterDeviceCallback(&onDevice);
-    printf("ickInitDiscovery(\"%s\",\"%s\",NULL)\n",deviceId, networkAddress);
-    ickDiscoveryResult_t result = ickInitDiscovery(deviceId, networkAddress,NULL);
-    printf("ickInitDiscovery = %d\n",result);
-    printf("ickDiscoverySetupConfigurationData(\"%s\",NULL)\n",deviceName);
-    result = ickDiscoverySetupConfigurationData(deviceName, NULL);
-    printf("ickDiscoverySetupConfigurationData = %d\n",result);
-    printf("ickDiscoveryAddService(ICKDEVICE_PLAYER)\n");
-    result = ickDiscoveryAddService(ICKDEVICE_PLAYER);
-    printf("ickDiscoveryAddService = %d\n",result);
+	printf("Initializing ickP2P for %s(%s) at %s...\n",deviceName,deviceId,networkAddress);
+	ickErrcode_t error;
+    printf("create(\"%s\",\"%s\",NULL,0,0,%d,%p)\n",deviceName,deviceId,ICKP2P_SERVICE_PLAYER,&error);
+	g_context = ickP2pCreate(deviceName,deviceId,NULL,0,0,ICKP2P_SERVICE_PLAYER,&error);
+	if(error == ICKERR_SUCCESS) {
+    	error = ickP2pRegisterMessageCallback(g_context, &messageCb);
+    	if(error != ICKERR_SUCCESS) {
+    		printf("ickP2pRegisterMessageCallback failed=%d\n",(int)error);
+    	}
+    	error = ickP2pRegisterDiscoveryCallback(g_context, &discoveryCb);
+    	if(error != ICKERR_SUCCESS) {
+    		printf("ickP2pRegisterDiscoveryCallback failed=%d\n",(int)error);
+    	}
+#ifdef ICK_DEBUG
+	    ickP2pSetHttpDebugging(context,1);
+#endif
+		error = ickP2pAddInterface(g_context, networkAddress, NULL);
+    	if(error != ICKERR_SUCCESS) {
+    		printf("ickP2pAddInterface failed=%d\n",(int)error);
+    	}
+		
+    	error = ickP2pResume(g_context);
+    	if(error != ICKERR_SUCCESS) {
+    		printf("ickP2pResume failed=%d\n",(int)error);
+    	}
+	}
 	fflush (stdout);
 }
 
@@ -357,9 +344,11 @@ int main( int argc, const char* argv[] )
 		close(g_clientSocket);
 		g_clientSocket = 0;
 	}
-	printf("Shutting down ickP2P...\n");
-	fflush (stdout);
-	ickEndDiscovery(1);
+	if(g_context != NULL) {
+		printf("Shutting down ickP2P...\n");
+		fflush (stdout);
+		ickP2pEnd(g_context,NULL);
+	}
 	printf("Shutdown of ickP2P completed\n");
 	fflush (stdout);
 	return 0;

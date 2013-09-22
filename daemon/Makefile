@@ -23,8 +23,8 @@ LDFLAGS		= -g -rdynamic
 MKDEPFLAGS	= -Y
 
 
-# Where to find the: ickstream p2p library
-ICKSTREAMDIR	= ../../ickstream-p2p
+# Where to find the: ickp2p library
+ICKSTREAMDIR	= ../ickstream-p2p
 
 # Name of executable
 EXECUTABLE	= ickSocketDaemon
@@ -36,11 +36,13 @@ OBJECTS         = $(SRC:.c=.o)
 
 
 # Includes and libraries
-ZLIBINCLUDES    = 
-ZLIBLIBS        = -lz
-INCLUDES	= -I$(ICKSTREAMDIR)/include -I$(ZLIBINCLUDES)
-LIBDIRS		= -L$(ICKSTREAMDIR)/lib
-LIBS		= -lickstreamp2p -lpthread $(ZLIBLIBS)
+#WEBSOCKETSINCLUDES    = 
+#WEBSOCKETSLIBS = -lwebsockets
+#ZLIBINCLUDES    = 
+#ZLIBLIBS        = -lz
+INCLUDES	= -I$(ICKSTREAMDIR)/include
+LIBDIRS		= -L$(ICKSTREAMDIR)/lib -L$(ROOTFS)/usr/lib
+LIBS		= -lickp2p -lpthread -lz -lwebsockets
 
 
 # How to compile c source files
@@ -49,14 +51,14 @@ LIBS		= -lickstreamp2p -lpthread $(ZLIBLIBS)
 
 
 # Default rule: make all
-all: $(ICKSTREAMDIR)/lib/libickstreamp2p.a $(EXECUTABLE)
+all: $(ICKSTREAMDIR)/lib/libp2p.a $(EXECUTABLE)
 
 
 # Build library
-$(ICKSTREAMDIR)/lib/libickstreamp2p.a:
+$(ICKSTREAMDIR)/lib/libp2p.a:
 	@echo '*************************************************************'
-	@echo "Need to build ickstream p2p library:"
-	cd $(ICKSTREAMDIR); make all
+	@echo "Need to build ickp2p library:"
+	cd $(ICKSTREAMDIR); make debug INCLUDES=-I$(WEBSOCKETSINCLUDES)
 	@echo '*************************************************************'
 
 
@@ -99,4 +101,4 @@ cleanall: clean
 
 # DO NOT DELETE
 
-ickSocketDaemon.o: $(ICKSTREAMDIR)/include/ickDiscovery.h
+ickSocketDaemon.o: $(ICKSTREAMDIR)/include/ickP2p.h
