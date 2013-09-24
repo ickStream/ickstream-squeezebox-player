@@ -123,7 +123,6 @@ void discoveryCb(ickP2pContext_t *ictx, const char *szDeviceId, ickP2pDeviceStat
 			}
 			break;
 		default:
-			printf("Unknown message in device callback\n");
 			break;
 	}
 	free(messageBuffer);
