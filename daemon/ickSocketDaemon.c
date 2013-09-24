@@ -219,9 +219,9 @@ void handleInitialization(int socketfd, char* message) {
     		printf("ickP2pRegisterDiscoveryCallback failed=%d\n",(int)error);
     	}
 #ifdef ICK_DEBUG
-	    ickP2pSetHttpDebugging(context,1);
+	    ickP2pSetHttpDebugging(g_context,1);
 #endif
-		error = ickP2pAddInterface(g_context, networkAddress, NULL);
+	error = ickP2pAddInterface(g_context, networkAddress, NULL);
     	if(error != ICKERR_SUCCESS) {
     		printf("ickP2pAddInterface failed=%d\n",(int)error);
     	}
