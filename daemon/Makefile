@@ -17,7 +17,7 @@
 # --------------------------------------------------------------
 
 CC              = cc
-CFLAGS          = -Wall -g -DLWS_NO_FORK -DGIT_VERSION=$(GITVERSION) -D_GNU_SOURCE
+CFLAGS          = -Wall -g -DICK_DEBUG -DLWS_NO_FORK -DGIT_VERSION=$(GITVERSION) -D_GNU_SOURCE
 LD		= $(CC)
 LDFLAGS		= -g -rdynamic
 MKDEPFLAGS	= -Y
