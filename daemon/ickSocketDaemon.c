@@ -161,7 +161,7 @@ void handleMessage(char* message) {
 	    }
 	}else {
 		printf("Sending message to %s: %s\n",deviceId, message);
-		ickErrcode_t result = ickP2pSendMsg(g_context, deviceId,ICKP2P_SERVICE_CONTROLLER,ICKP2P_SERVICE_PLAYER,message,strlen(message));
+		ickErrcode_t result = ickP2pSendMsg(g_context, deviceId,ICKP2P_SERVICE_ANY,ICKP2P_SERVICE_PLAYER,message,strlen(message));
 	    if(result != ICKERR_SUCCESS) {
 	        printf("Failed to send message, error=%d\n",(int)result);
 	    }
