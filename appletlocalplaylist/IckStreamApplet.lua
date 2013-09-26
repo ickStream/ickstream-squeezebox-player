@@ -96,6 +96,11 @@ function init(self)
 	end
 
 	os.execute("chmod +x ".._getAppletDir().."IckStream/ickSocketDaemon")
+	self:_startDaemon()
+	jnt:subscribe(self)
+end
+
+function _startDaemon(self)
 	if log:isDebug() then
 		os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon > /var/log/ickstream.log 2>&1 &")
 	else
@@ -107,8 +112,6 @@ function init(self)
 		end,
 		true
 		):start()
-
-	jnt:subscribe(self)
 end
 
 function notify_serverDisconnected(self,server, noOfRetries)
@@ -178,6 +181,8 @@ function _initializeSocket(self)
 							-- TODO: Add proper error handling
 						   log:error(err)
 						   self.socket:t_removeRead()
+						   self.socket:close()
+						   self:_startDaemon()
 					   else
 					   	   local completeMessage
 					   	   if self.previousMessagePart then
