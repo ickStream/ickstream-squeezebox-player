@@ -47,22 +47,23 @@ void messageCb(ickP2pContext_t *ictx, const char *szSourceDeviceId, ickP2pServic
 {
 	char MESSAGE[] = "MESSAGE\n";
 	char END[] = "\n!END!\n";
+	char sourceServiceString[4];
 	
-	printf("messageCb called\n");
-	fflush (stdout);
+	sprintf(sourceServiceString,"%d\n",(int)sourceService);
 	pthread_mutex_lock(&g_receiveMutex);
-	printf("Message from %s: %s\n", szSourceDeviceId,(const char *)message);
+	printf("Message from %s(%d): %s\n", szSourceDeviceId, (int)sourceService, (const char *)message);
 	fflush (stdout);
 	if(g_clientSocket != 0) {
-		size_t messageBufferSize = strlen(szSourceDeviceId)+messageLength+strlen(MESSAGE)+1+strlen(END);
+		size_t messageBufferSize = strlen(szSourceDeviceId)+messageLength+strlen(MESSAGE)+strlen(sourceServiceString)+1+strlen(END);
 		size_t deviceIdLength = strlen(szSourceDeviceId);
 		char* messageBuffer = malloc(messageBufferSize+1);
 		memcpy(messageBuffer,szSourceDeviceId,deviceIdLength);
 		messageBuffer[deviceIdLength] = '\n';
 		memcpy(messageBuffer+deviceIdLength+1,MESSAGE,strlen(MESSAGE));
-		memcpy(messageBuffer+deviceIdLength+1+strlen(MESSAGE),message,messageLength);
-		memcpy(messageBuffer+deviceIdLength+1+strlen(MESSAGE)+messageLength,END,strlen(END));
-		messageBuffer[deviceIdLength+1+strlen(MESSAGE)+messageLength+strlen(END)]='\0';
+		memcpy(messageBuffer+deviceIdLength+1+strlen(MESSAGE),sourceServiceString,strlen(sourceServiceString));
+		memcpy(messageBuffer+deviceIdLength+1+strlen(MESSAGE)+strlen(sourceServiceString),message,messageLength);
+		memcpy(messageBuffer+deviceIdLength+1+strlen(MESSAGE)+strlen(sourceServiceString)+messageLength,END,strlen(END));
+		messageBuffer[deviceIdLength+1+strlen(MESSAGE)+strlen(sourceServiceString)+messageLength+strlen(END)]='\0';
 		if(send(g_clientSocket,messageBuffer,messageBufferSize,0) != messageBufferSize) {
 			fprintf(stderr, "Failed to write message from %s to socket: %s\n",szSourceDeviceId,(const char*)messageBuffer);
 			fflush (stderr);
@@ -81,7 +82,7 @@ void discoveryCb(ickP2pContext_t *ictx, const char *szDeviceId, ickP2pDeviceStat
 	char ADD[] = "ADD\n";
 	char DEL[] = "DEL\n";
 	char END[] = "!END!\n";
-	printf("discoveryCb called\n");
+	printf("DISCOVERY %s type=%d services=%d\n",szDeviceId,(int)change,(int)type);
 	fflush (stdout);
 	pthread_mutex_lock(&g_receiveMutex);
 
@@ -145,6 +146,7 @@ void handleMessage(char* message) {
 	message = skipDelimiters(message);
 
 	char deviceId[100];
+	char servicesString[10];
 	int i=0;
 	while(*message != '\0' && *message != '\n' && *message != '\r' && *message != ' ') {
 		deviceId[i] = *message;
@@ -152,16 +154,30 @@ void handleMessage(char* message) {
 		i++;
 	}
 	deviceId[i] = '\0';
+	if(*message != '\0') {
+		message++;
+	}
+	i=0;
+	while(*message != '\0' && *message != '\n' && *message != '\r' && *message != ' ') {
+		servicesString[i] = *message;
+		message++;
+		i++;
+	}
+	servicesString[i] = '\0';
+	if(*message != '\0') {
+		message++;
+	}
+	int services = atoi (servicesString);	
 
 	if(strcmp(deviceId,"ALL")==0) {
 		printf("Sending notification %s\n",message);
-		ickErrcode_t result = ickP2pSendMsg(g_context, NULL, ICKP2P_SERVICE_ANY, ICKP2P_SERVICE_PLAYER, message,strlen(message));
+		ickErrcode_t result = ickP2pSendMsg(g_context, NULL, services, ICKP2P_SERVICE_PLAYER, message,strlen(message));
 	    if(result != ICKERR_SUCCESS) {
 	        printf("Failed to send notification, error=%d\n",(int)result);
 	    }
 	}else {
-		printf("Sending message to %s: %s\n",deviceId, message);
-		ickErrcode_t result = ickP2pSendMsg(g_context, deviceId,ICKP2P_SERVICE_ANY,ICKP2P_SERVICE_PLAYER,message,strlen(message));
+		printf("Sending message to %s(%d): %s\n",deviceId, services, message);
+		ickErrcode_t result = ickP2pSendMsg(g_context, deviceId,services,ICKP2P_SERVICE_PLAYER,message,strlen(message));
 	    if(result != ICKERR_SUCCESS) {
 	        printf("Failed to send message, error=%d\n",(int)result);
 	    }

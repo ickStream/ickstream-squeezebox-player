@@ -204,16 +204,18 @@ function _initializeSocket(self)
 							   local j = string.find(message, "\n", i+1)  
 							   local messageType = string.sub(message,i+1,j-1)
 							   if messageType == "MESSAGE" then
-								   local jsonData = json.decode(string.sub(message,j+1))
-								   log:debug("GOT MESSAGE (from "..deviceId.."): ".. string.sub(message,j+1))
+								   local k = string.find(message,"\n",j+1);
+								   local services = string.sub(message,j+1,k-1)
+								   local jsonData = json.decode(string.sub(message,k+1))
+								   log:debug("GOT MESSAGE (from "..deviceId.."("..services..")): ".. string.sub(message,k+1))
 								   if jsonData then
 								   		if jsonData.method then
 									   		if not jsonData.params then
 									   			jsonData.params = {}
 									   		end
-									   		self:_handleJSONRPCRequest(deviceId, jsonData)
+									   		self:_handleJSONRPCRequest(deviceId, services, jsonData)
 									   	else
-									   		self:_handleJSONRPCResponse(deviceId, jsonData)
+									   		self:_handleJSONRPCResponse(deviceId, services, jsonData)
 									   	end
 								   end
 								elseif messageType == "DEVICE" then
@@ -414,7 +416,7 @@ function _getServiceInformation(self, deviceId)
 	if not alreadySent then
 		self.serviceInformationRequestId = self.serviceInformationRequestId + 1
 		self.serviceInformationRequests[id] = deviceId
-		self:_sendJsonRpcRequest(deviceId,"2.0",id,"getServiceInformation",nil)
+		self:_sendJsonRpcRequest(deviceId,"4", "2.0",id,"getServiceInformation",nil)
 		Timer(15000,
 			function() 
 				if self.serviceInformationRequests[tonumber(id)] and self.localServices[self.serviceInformationRequests[tonumber(id)]] == nil then
@@ -471,7 +473,7 @@ function free(self)
         return false
 end
 
-function _sendJsonRpcResponse(self, deviceId, version, id, result, err)
+function _sendJsonRpcResponse(self, deviceId, services, version, id, result, err)
 	local response = {}
 	response.jsonrpc = version
 	response.id = id
@@ -493,8 +495,8 @@ function _sendJsonRpcResponse(self, deviceId, version, id, result, err)
 						sock:close()
 						return
 					end
-					log:debug("Writing to "..deviceId..": "..jsonString)
-					local message = "MESSAGE\n"..deviceId.."\n"..jsonString.."\0"
+					log:debug("Writing to "..deviceId.."("..services.."): "..jsonString)
+					local message = "MESSAGE\n"..deviceId.."\n"..services.."\n"..jsonString.."\0"
 					local sent = 0
 					local err
 					local lastSent
@@ -514,7 +516,7 @@ function _sendJsonRpcResponse(self, deviceId, version, id, result, err)
 
 end
 
-function _sendJsonRpcRequest(self, deviceId, version, id, method, params)
+function _sendJsonRpcRequest(self, deviceId, services, version, id, method, params)
 	local request = {}
 	request.jsonrpc = version
 	if id then
@@ -537,8 +539,8 @@ function _sendJsonRpcRequest(self, deviceId, version, id, method, params)
 						sock:close()
 						return
 					end
-					log:debug("Writing to "..deviceId..": "..jsonString)
-					socket.t_sock:send("MESSAGE\n"..deviceId.."\n"..jsonString.."\0")
+					log:debug("Writing to "..deviceId.."("..services.."): "..jsonString)
+					socket.t_sock:send("MESSAGE\n"..deviceId.."\n"..services.."\n"..jsonString.."\0")
 					socket:t_removeWrite()
 					socket:close()
 				end,
@@ -546,7 +548,7 @@ function _sendJsonRpcRequest(self, deviceId, version, id, method, params)
 
 end
 
-function _handleJSONRPCResponse(self, deviceId, json)
+function _handleJSONRPCResponse(self, deviceId, services, json)
 	if not json.error then
 		if json.id and self.serviceInformationRequests[tonumber(json.id)] then
 			log:info("Storing serviceUrl of "..self.serviceInformationRequests[tonumber(json.id)].."="..json.result.serviceUrl)
@@ -568,86 +570,86 @@ function _handleJSONRPCResponse(self, deviceId, json)
 	end
 end
 
-function _handleJSONRPCRequest(self, deviceId, json)
+function _handleJSONRPCRequest(self, deviceId, services, json)
 	if json.method == 'setPlayerConfiguration' then
 		self:_setPlayerConfiguration(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'getPlayerConfiguration' then
 		self:_getPlayerConfiguration(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'getProtocolVersions' then
 		self:_getProtocolVersions(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'getPlayerStatus' then
 		self:_getPlayerStatus(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)		
 	elseif json.method == 'setPlaylistName' then
 		self:_setPlaylistName(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'setPlaybackQueueMode' then
 		self:_setPlaybackQueueMode(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'shuffleTracks' then
 		self:_shuffleTracks(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'getPlaybackQueue' then
 		self:_getPlaybackQueue(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'addTracks' then
 		self:_addTracks(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'removeTracks' then
 		self:_removeTracks(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'moveTracks' then
 		self:_moveTracks(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'setTracks' then
 		self:_setTracks(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, serivces, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'play' then
 		self:_play(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, serivces, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'getSeekPosition' then
 		self:_getSeekPosition(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'setSeekPosition' then
 		self:_setSeekPosition(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'getTrack' then
 		self:_getTrack(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'setTrack' then
 		self:_setTrack(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'setTrackMetadata' then
 		self:_setTrackMetadata(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'getVolume' then
 		self:_getVolume(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	elseif json.method == 'setVolume' then
 		self:_setVolume(json.params,function(result,err)
-			self:_sendJsonRpcResponse(deviceId, json.jsonrpc, json.id, result, err)
+			self:_sendJsonRpcResponse(deviceId, services, json.jsonrpc, json.id, result, err)
 		end)
 	else
 		log:debug("Ignoring request with method="..json.method)
@@ -962,7 +964,7 @@ end
 function _sendPlayerStatusChangedNotification(self)
 	self:_getPlayerStatus(undef,function(result,err) 
 		if not err then
-			self:_sendJsonRpcRequest(nil, "2.0", nil, 'playerStatusChanged', result)
+			self:_sendJsonRpcRequest(nil, "15", "2.0", nil, 'playerStatusChanged', result)
 		end
 	end)
 end
@@ -977,7 +979,7 @@ function _sendPlaybackQueueChangedNotification(self)
 	end
 	params.countAll = #self.playlistTracks
 	params.lastChanged = self.playlistTimestamp
-	self:_sendJsonRpcRequest(nil, "2.0", nil, 'playbackQueueChanged', params)
+	self:_sendJsonRpcRequest(nil, "15", "2.0", nil, 'playbackQueueChanged', params)
 end
 
 function _setPlayerConfiguration(self,params,sink)
