@@ -997,80 +997,85 @@ function _setPlayerConfiguration(self,params,sink)
 			return
 		end
 	end
-	if params.accessToken then
+	local sendNotification = false
+	if params.deviceRegistrationToken ~= nil and string.len(params.deviceRegistrationToken)>0 then
+		self:getSettings()["accessToken"] = nil
+		self:storeSettings()
+		self:_registerDeviceUsingDeviceRegistrationToken(params);
+	elseif params.deviceRegistrationToken ~= nil then
+		self:getSettings()["accessToken"] = nil
+		self:storeSettings()
+		sendNotification = true
+	elseif params.accessToken ~= nil and string.len(params.accessToken)>0 then
 		self:getSettings()["accessToken"] = params.accessToken
 		self:storeSettings()
 		self:_updateIpAddressInCloud()
+		sendNotification = true
+	elseif params.accessToken ~= nil then
+		self:getSettings()["accessToken"] = nil
+		self:storeSettings()
+		sendNotification = true
 	end
-	self:_setPlayerConfigurationDeviceRegistrationToken(params,sink);
+	self:_setPlayerConfigurationName(params,sink)
+	if sendNotification then
+		self:_sendPlayerStatusChangedNotification()
+	end
 end
 
-function _setPlayerConfigurationDeviceRegistrationToken(self,params,sink)
-	if params.deviceRegistrationToken then
-		local cloudCoreUrl = self:getSettings()["cloudCoreUrl"]
-		if cloudCoreUrl == nil then
-			cloudCoreUrl = 'http://api.ickstream.com/ickstream-cloud-core/jsonrpc'
-		end
-
-		local parsedUrl = url.parse(cloudCoreUrl)
-		if parsedUrl.port == nil then
-			parsedUrl.port = 80
-		end
-		
-		local ipAddress = self:_getCurrentIpAddress()
-
-		local hardwareId = self:_getHardwareId()
-
-		log:info("Using Cloud Core Service: host: "..parsedUrl.host)
-		log:info("Using Cloud Core Service port: "..parsedUrl.port)
-		log:info("Using Cloud Core Service path: "..parsedUrl.path)
-		local http = SocketHttp(jnt, parsedUrl.host, parsedUrl.port)
-		local req = RequestHttp(function(chunk, err)
-				if err then
-					log:warn(err)
-					sink(undef,{
-						code = -32001,
-						message = 'Unable to register device in cloud: '..err
-					})
-				elseif chunk then
-					chunk = json.decode(chunk)
-					if chunk.error or chunk.result.accessToken == nil then
-						self:getSettings()["accessToken"] = nil
-						self:storeSettings()
-						log:warn("Unable to register device in cloud: "..chunk.error.code..": "..chunk.error.message)
-						sink(undef,{
-							code = -32001,
-							message = 'Unable to register device in cloud'
-						})
-					else
-						self:getSettings()["accessToken"] = chunk.result.accessToken
-						self:storeSettings()
-						log:info("Successfully registered device in cloud")
-						self:_setPlayerConfigurationName(params,sink)
-					end
-				end
-			end,
-			'POST', parsedUrl.path,
-			{
-				t_bodySource = _getBodySource(
-					{
-						jsonrpc = "2.0",
-						id = 1,
-						method = "addDevice",
-						params = {
-							applicationId = 'C5589EF9-9C28-4556-942A-765E698215F1',
-							hardwareId = hardwareId,
-							address = ipAddress
-						}
-					}),
-				headers = {
-					Authorization = 'Bearer '..params.deviceRegistrationToken
-				}
-			})
-			http:fetch(req)
-	else
-		self:_setPlayerConfigurationName(params,sink)
+function _registerDeviceUsingDeviceRegistrationToken(self,params)
+	local cloudCoreUrl = self:getSettings()["cloudCoreUrl"]
+	if cloudCoreUrl == nil then
+		cloudCoreUrl = 'http://api.ickstream.com/ickstream-cloud-core/jsonrpc'
 	end
+
+	local parsedUrl = url.parse(cloudCoreUrl)
+	if parsedUrl.port == nil then
+		parsedUrl.port = 80
+	end
+	
+	local ipAddress = self:_getCurrentIpAddress()
+
+	local hardwareId = self:_getHardwareId()
+
+	log:info("Using Cloud Core Service: host: "..parsedUrl.host)
+	log:info("Using Cloud Core Service port: "..parsedUrl.port)
+	log:info("Using Cloud Core Service path: "..parsedUrl.path)
+	local http = SocketHttp(jnt, parsedUrl.host, parsedUrl.port)
+	local req = RequestHttp(function(chunk, err)
+			if err then
+				log:warn(err)
+				self:_sendPlayerStatusChangedNotification()
+			elseif chunk then
+				chunk = json.decode(chunk)
+				if chunk.error or chunk.result.accessToken == nil then
+					log:warn("Unable to register device in cloud: "..chunk.error.code..": "..chunk.error.message)
+					self:_sendPlayerStatusChangedNotification()
+				else
+					self:getSettings()["accessToken"] = chunk.result.accessToken
+					self:storeSettings()
+					log:info("Successfully registered device in cloud")
+					self:_sendPlayerStatusChangedNotification()
+				end
+			end
+		end,
+		'POST', parsedUrl.path,
+		{
+			t_bodySource = _getBodySource(
+				{
+					jsonrpc = "2.0",
+					id = 1,
+					method = "addDevice",
+					params = {
+						applicationId = 'C5589EF9-9C28-4556-942A-765E698215F1',
+						hardwareId = hardwareId,
+						address = ipAddress
+					}
+				}),
+			headers = {
+				Authorization = 'Bearer '..params.deviceRegistrationToken
+			}
+		})
+		http:fetch(req)
 end
 
 function _setPlayerConfigurationName(self,params,sink)
@@ -1168,6 +1173,11 @@ function _getPlayerStatus(self,params,sink)
 		end
 		result.lastChanged = self.playerStatusTimestamp
 		result.playbackQueueMode = self:getSettings()["playbackQueueMode"]
+		if self:getSettings()["accessToken"] then
+			result.cloudCoreStatus = "REGISTERED"
+		else
+			result.cloudCoreStatus = "UNREGISTERED"
+		end
 		sink(result)
 	else
 		sink(undef,{
