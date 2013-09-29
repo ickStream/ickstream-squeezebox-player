@@ -221,6 +221,14 @@ void handleInitialization(int socketfd, char* message) {
 	deviceName[i] = '\0';
 
     g_clientSocket = socketfd;
+
+#ifdef DEBUG
+    printf("ickP2pSetLogLevel(7)\n");
+    ickP2pSetLogging(7,stderr,100);
+#elif ICK_DEBUG
+    ickP2pSetLogging(6,NULL,100);
+#endif
+
 	printf("Initializing ickP2P for %s(%s) at %s...\n",deviceName,deviceId,networkAddress);
 	ickErrcode_t error;
     printf("create(\"%s\",\"%s\",NULL,0,0,%d,%p)\n",deviceName,deviceId,ICKP2P_SERVICE_PLAYER,&error);
