@@ -723,12 +723,12 @@ function _playCurrentTrack(self, sink)
 					-- TODO: Implement support for getItemStreamingRef for local services
 				elseif serviceId and self.cloudServices[serviceId] then
 					log:debug("Using previously retrieved content service: "..serviceId..": "..self.cloudServices[serviceId])
-					self:_getStreamingRefAndPlay(self.cloudServices[serviceId],currentTrack.id,sink)
+					self:_getStreamingRefAndPlay(self.cloudServices[serviceId],currentTrack,sink)
 				elseif serviceId then
 					self:_refreshCloudContentServices(function (success) 
 						if self.cloudServices[serviceId] then
 							log:debug("Using retrieved content service: "..serviceId..": "..self.cloudServices[serviceId])
-							self:_getStreamingRefAndPlay(self.cloudServices[serviceId],currentTrack.id,sink)
+							self:_getStreamingRefAndPlay(self.cloudServices[serviceId],currentTrack,sink)
 						else
 							sink(false)
 							return
@@ -748,7 +748,7 @@ function _playCurrentTrack(self, sink)
 	  						redirect = false
 						}
 						if (code == 301 or code == 302) and headers["location"] then
-							self:_playUrl(headers["location"],sink)
+							self:_playUrl(headers["location"],currentTrack,sink)
 						else 
 							log:warn("Unable to get redirected url for: "..streamingUrl..", Error: "..code)
 							sink(false)
@@ -757,7 +757,7 @@ function _playCurrentTrack(self, sink)
 						log:warn("No access token found, player must be registered for this stream")
 					end
 				else 
-					self:_playUrl(streamingUrl,sink)
+					self:_playUrl(streamingUrl,currentTrack,sink)
 				end
 			else
 				sink(false)
@@ -767,7 +767,7 @@ function _playCurrentTrack(self, sink)
 	end	
 end
 
-function _getStreamingRefAndPlay(self, serviceUrl, itemId, sink)
+function _getStreamingRefAndPlay(self, serviceUrl, item, sink)
 	local accessToken = self:getSettings()["accessToken"]
 	if accessToken then
 		local parsedUrl = url.parse(serviceUrl)
@@ -789,7 +789,7 @@ function _getStreamingRefAndPlay(self, serviceUrl, itemId, sink)
 						log:warn("Unable to retrieve streaming reference")
 						sink(false)
 					else
-						self:_playUrl(chunk.result.url,sink)
+						self:_playUrl(chunk.result.url,item,sink)
 					end
 				end
 			end,
@@ -801,7 +801,7 @@ function _getStreamingRefAndPlay(self, serviceUrl, itemId, sink)
 						id = 1,
 						method = "getItemStreamingRef",
 						params = {
-							itemId = itemId
+							itemId = item.id
 						}
 					}),
 				headers = {
@@ -815,7 +815,7 @@ function _getStreamingRefAndPlay(self, serviceUrl, itemId, sink)
 	end
 end
 
-function _playUrl(self, streamingUrl,sink)
+function _playUrl(self, streamingUrl,item, sink)
 	log:debug("Playing "..streamingUrl)
 	local player = Player:getLocalPlayer()
 	local ip, port = player:getSlimServer():getIpPort();
@@ -853,7 +853,7 @@ function _playUrl(self, streamingUrl,sink)
 			end
 		end,
 		player and player:getId(),
-		{'playlist','play',streamingUrl}
+		{'playlist','play',streamingUrl,item.text}
 	)
 end
 
