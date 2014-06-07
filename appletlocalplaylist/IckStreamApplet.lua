@@ -55,7 +55,6 @@ local jnt              = jnt
 module(..., Framework.constants)
 oo.class(_M, Applet)
 
-
 ----------------------------------------------------------------------------------------
 -- Helper Functions
 --
@@ -96,30 +95,56 @@ function init(self)
 	end
 
 	os.execute("chmod +x ".._getAppletDir().."IckStream/ickSocketDaemon")
-	self:_startDaemon()
+	self.usingDaemon = nil
 	jnt:subscribe(self)
 end
 
 function _startDaemon(self)
-	if log:isDebug() then
-		os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon > /var/log/ickstream.log 2>&1 &")
-	else
-		os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon &")
+	if not self.usingDaemon then
+		if log:isDebug() then
+			os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon > /var/log/ickstream.log 2>&1 &")
+		else
+			os.execute("killall ickSocketDaemon;nice ".._getAppletDir().."IckStream/ickSocketDaemon &")
+		end
+		Timer(5000,
+			function() 
+				self:_initializeSocket() 
+			end,
+			true
+			):start()
 	end
-	Timer(5000,
-		function() 
-			self:_initializeSocket() 
-		end,
-		true
-		):start()
 end
 
-function notify_serverDisconnected(self,server, noOfRetries)
-	-- TODO: Handle server disconnect notification
-end
 
-function notify_serverConnected(self,server)
+function notify_playerConnected(self,player)
 	-- TODO: Handle server connected notification
+	if Player:getLocalPlayer() == player and player:getSlimServer() and not player:getSlimServer():isSqueezeNetwork() then
+		local server = player:getSlimServer()
+		server:userRequest(function(chunk,err)
+			if err then
+				log:debug("Starting daemon since plugin not running on server("..server.name..")")
+				self:_startDaemon();
+			else
+				if tonumber(chunk.data._enabled) == 1 then
+					if self.usingDaemon then
+						log:debug("Killing daemon since plugin is running on server("..server.name..")")
+						self.usingDaemon = nil
+						os.execute("killall ickSocketDaemon");
+					end
+				else
+					log:debug("Starting daemon since plugin not configured for this player on server("..server.name..")")
+					self:_startDaemon();
+				end
+			end
+		end,
+		player and player:getId(),
+		{'ickstream','player','?'})
+	elseif player:getSlimServer() and player:getSlimServer():isSqueezeNetwork() then
+		log:debug("Starting daemon since connected to mysqueezebox.com")
+		self:_startDaemon();
+	elseif player:getSlimServer() then
+		log:debug("Ignore server("..player:getSlimServer().name..") which is not connected to local player")
+	end
 end
 
 function notify_networkConnected(self)
@@ -128,7 +153,7 @@ function notify_networkConnected(self)
 end
 
 function notify_playerModeChange(self, player, mode)
-	if Player:getLocalPlayer():getId() == player:getId() then
+	if Player:getLocalPlayer():getId() == player:getId() and self.usingDaemon then
 		if player:isPowerOn() then
 			if mode == 'stop' then
 				if self.playlistIndex ~= nil and self.playlistIndex<#self.playlistTracks-1 then
@@ -166,8 +191,6 @@ function notify_playerModeChange(self, player, mode)
 				log:debug("Ignoring mode change to: "..mode)
 			end
 		end
-	else
-		log:debug("Ignoring mode change for "..player:getId().." to "..mode)
 	end
 end
 
@@ -182,7 +205,10 @@ function _initializeSocket(self)
 						   log:error(err)
 						   self.socket:t_removeRead()
 						   self.socket:close()
-						   self:_startDaemon()
+						   	local player = Player:getLocalPlayer()
+						   	if player and player:getSlimServer() then
+								self: notify_playerConnected(player)
+						   	end
 					   else
 					   	   local completeMessage
 					   	   if self.previousMessagePart then
@@ -279,6 +305,7 @@ function _initializeSocket(self)
 							log:info("Initializing ickSocketDaemon with: "..uuid..", "..ipAddress..", "..name)
 							self.socket.t_sock:send("INIT\n"..uuid.."\n"..ipAddress.."\n"..name.."\0")
 							self:_updateIpAddressInCloud()
+							self.usingDaemon = 1
 						else
 							log:warn("No IP detected")
 						end
